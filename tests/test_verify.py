@@ -126,6 +126,31 @@ def test_checks_degrade_to_not_run(synthetic_dir, tmp_path):
     assert json.dumps(r.to_json())  # serialisable, traceback included as text
 
 
+def test_ground_truth_check_on_synthetic(synthetic_dir):
+    """The synthetic working copy doubles as the map: five coloured cells match their own regions."""
+    s = Session.load(synthetic_dir)
+    r = C.ground_truth(s, 0, synthetic_dir / "working.png", None)
+    assert r.passed is True, r.summary
+    d = r.details
+    assert d["match_threshold"] == 0.8 and d["threshold"] == {"min_one_to_one_fraction": 0.5, "per_piece_iou": 0.8}
+    assert d["n_pieces"] == 5 and d["one_to_one_fraction"] == 1.0 and d["one_to_one_matched"] == 5
+    assert len(d["rows"]) == 5 and all({"margin", "runner_up", "assigned_tile_id", "transform"} <= set(x) for x in d["rows"])
+    assert len(d["one_to_one"]) == 5 and all(x["matched"] for x in d["one_to_one"])
+    assert [x["index"] for x in d["levels"]] == [0, 1, 2, 3] and d["levels_evaluated"] == [0, 1, 2, 3]
+    assert d["best_level"]["index"] == 0 and d["never_matched"] == [] and d["why"] == []
+    assert len(d["best_per_piece"]) == 5 and all(b["matched"] for b in d["best_per_piece"])
+    assert d["labels_loaded"] is False and "no labels" in d["labels_note"]
+    assert {"pieces", "candidates", "table", "map_rgb", "best_per_piece"} <= set(d["_objects"])
+    assert "one-to-one 5/5" in r.summary and "best level 0" in r.summary
+    json.dumps(r.to_json())
+    # at level 2 only the axis cell survives as a single shape (the four side cells are one region), so one
+    # of the five pieces matches one-to-one: the check fails and says why
+    r2 = C.ground_truth(s, 2, synthetic_dir / "working.png", None)
+    assert r2.passed is False and r2.details["one_to_one_fraction"] == pytest.approx(0.2)
+    assert r2.details["why"] and "level 0" in r2.details["why"][0] and "why:" in r2.summary
+    assert r2.details["measured"]["best_level"] == 0
+
+
 def test_match_rows_adapts_tuples_dicts_and_objects():
     from dataclasses import dataclass
 

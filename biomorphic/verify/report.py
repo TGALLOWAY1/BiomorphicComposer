@@ -128,41 +128,71 @@ def _section_numbers(r: CheckResult) -> list[str]:
                               _fmt(p.get("delta_e"), 1)] for p in prs[:12]])
     elif r.name == "ground_truth":
         la = d.get("label_assignment") or {}
+        bl = d.get("best_level") or {}
+        thr = d.get("match_threshold")
+        n = d.get("n_rows")
         lines += [f"- map: `{d.get('map')}`; labels: `{d.get('labels_path')}` "
                   f"({'loaded' if d.get('labels_loaded') else d.get('labels_note') or 'not loaded'})",
-                  f"- {d.get('n_pieces')} map pieces, {d.get('n_candidates')} candidate regions at level {d.get('level')}"]
+                  f"- {d.get('n_pieces')} map pieces, {d.get('n_candidates')} candidate regions at the picked level "
+                  f"{d.get('level')}; a piece matches at scale-normalised shape IoU >= {_fmt(thr, 2)} "
+                  f"(mirror and +/-10 deg allowed)"]
         if la:
             lines.append(f"- labels attached to {la.get('n_assigned')} pieces; label entries with no piece: "
                          f"{la.get('unmatched_labels') or 'none'}; pieces left unlabelled: {la.get('unlabelled_pieces') or 'none'}")
-        lines.append(f"- matched {d.get('n_matched')} of {d.get('n_rows')} ({_pct(d.get('matched_fraction'))}) by the best "
-                     f"candidate per piece (shape IoU >= {_fmt(d.get('match_threshold'), 2)})"
-                     + (f"; one-to-one assignment {d.get('one_to_one_matched')} of {d.get('n_rows')} "
-                        f"({_pct(d.get('one_to_one_fraction'))})" if d.get("one_to_one_fraction") is not None else ""))
-        lines.append(f"- shape IoU min/median/mean/max = {_fmt(d.get('score_min'))} / {_fmt(d.get('score_median'))} / "
-                     f"{_fmt(d.get('score_mean'))} / {_fmt(d.get('score_max'))}")
+        lines.append(f"- **one-to-one assignment (headline): {d.get('one_to_one_matched')} of {n} "
+                     f"({_pct(d.get('one_to_one_fraction'))}); pass rule >= "
+                     f"{_pct((d.get('threshold') or {}).get('min_one_to_one_fraction'))}**")
+        bt = d.get("one_to_one_fraction_by_threshold") or {}
+        if bt:
+            lines.append("- one-to-one matched fraction if the bar were: "
+                         + ", ".join(f"{k} -> {v:.0%}" for k, v in bt.items() if v is not None))
+        lines.append(f"- greedy best per piece: {d.get('n_matched')} of {n} ({_pct(d.get('matched_fraction'))}); "
+                     f"shape IoU min/median/mean/max = {_fmt(d.get('score_min'))} / {_fmt(d.get('score_median'))} / "
+                     f"{_fmt(d.get('score_mean'))} / {_fmt(d.get('score_max'))}; baseline (median IoU over every "
+                     f"piece x region pair) {_fmt(d.get('baseline'))}")
+        if bl:
+            lines.append(f"- best level over the evaluated levels: {bl.get('index')} ({bl.get('n_regions')} regions), "
+                         f"one-to-one {bl.get('one_to_one_matched')} of {n} ({_pct(bl.get('one_to_one_fraction'))})"
+                         + (f"; levels subsampled for time, skipped {d.get('levels_skipped')}" if d.get("subsampled") else ""))
+        nv = d.get("never_matched") or []
+        lines.append(f"- pieces that never reach IoU {_fmt(thr, 2)} at any level: {', '.join(str(v) for v in nv) if nv else 'none'}")
+        for w in d.get("why") or []:
+            lines.append(f"- why: {_esc(w)}")
+        rt = d.get("reused_tiles") or {}
+        if rt:
+            lines.append("- regions that are the greedy best of several pieces at once: "
+                         + "; ".join(f"r{t} <- {', '.join(str(v) for v in labs)}" for t, labs in rt.items()))
         rows = d.get("rows") or []
         if rows:
-            has_1to1 = any("assigned_tile_id" in x for x in rows)
-            has_tr = any("transform" in x for x in rows)
-            headers = ["map label", "best tile (region id)", "shape IoU", "matched"]
-            if has_1to1:
-                headers += ["1:1 tile", "1:1 IoU"]
-            if has_tr:
-                headers += ["transform"]
-            body = []
-            for x in rows:
-                row = [x.get("label"), x.get("tile_id"), _fmt(x.get("score")), x.get("matched")]
-                if has_1to1:
-                    row += [x.get("assigned_tile_id"), _fmt(x.get("assigned_score"))]
-                if has_tr:
-                    row += [x.get("transform")]
-                body.append(row)
-            lines.append("")
-            lines += _table(headers, body)
-        misses = d.get("misses") or []
+            lines += ["", "Greedy best per piece (margin = IoU minus the runner-up region's IoU):", ""]
+            lines += _table(["map label", "best tile (region id)", "shape IoU", "runner-up", "margin", "matched", "transform"],
+                            [[x.get("label"), x.get("tile_id"), _fmt(x.get("score")), _fmt(x.get("runner_up")),
+                              _fmt(x.get("margin")), x.get("matched"), x.get("transform")] for x in rows])
+        one = d.get("one_to_one") or []
+        if one:
+            lines += ["", "One-to-one assignment (each region used at most once; the headline):", ""]
+            lines += _table(["map label", "tile (region id)", "shape IoU", "matched"],
+                            [[x.get("label"), x.get("tile_id"), _fmt(x.get("score")), x.get("matched")] for x in one])
+        bpp = d.get("best_per_piece") or []
+        if bpp:
+            lines += ["", "Best level per piece (highest IoU any region reaches, over the evaluated levels):", ""]
+            lines += _table(["map label", "level", "region id", "shape IoU", "margin", "reaches threshold"],
+                            [[x.get("label"), x.get("level"), x.get("region_id"), _fmt(x.get("score")),
+                              _fmt(x.get("margin")), x.get("matched")] for x in bpp])
+        lv = d.get("levels") or []
+        if lv:
+            lines += ["", "Per level (one-to-one at the threshold; present = pieces whose best region reaches it):", ""]
+            lines += _table(["level", "regions", "1:1 matched", "1:1 fraction", "present", "mean IoU", "baseline", "seconds"],
+                            [[x.get("index"), x.get("n_regions"), x.get("one_to_one_matched"),
+                              _pct(x.get("one_to_one_fraction")), x.get("greedy_matched"), _fmt(x.get("mean_score")),
+                              _fmt(x.get("baseline")), _fmt(x.get("seconds"), 2)] for x in lv])
+        misses = d.get("one_to_one_misses") or []
         lines.append("")
-        lines.append("Misses: " + (", ".join(f"{m.get('label')} (best r{m.get('tile_id')} @ {_fmt(m.get('score'))})"
-                                             for m in misses) if misses else "none"))
+        lines.append("Misses (one-to-one): " + (", ".join(f"{m.get('label')} (r{m.get('tile_id')} @ {_fmt(m.get('score'))})"
+                                                        for m in misses) if misses else "none"))
+        gm = d.get("misses") or []
+        lines.append("Misses (greedy): " + (", ".join(f"{m.get('label')} (best r{m.get('tile_id')} @ {_fmt(m.get('score'))})"
+                                                    for m in gm) if gm else "none"))
     elif r.name == "non_destructive":
         lines.append(f"- render modes: {', '.join(d.get('modes') or [])}")
         tiles = d.get("tiles") or []

@@ -261,6 +261,8 @@ def _thumb(img: np.ndarray | None, size: int) -> np.ndarray:
 
 
 def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tuple[np.ndarray, str]:
+    """Grid of map piece | its one-to-one matched region | score, border green/red by matched at the check's
+    threshold; a line under each pair gives the best level, region and IoU the piece reaches anywhere."""
     objs = _gt_objects(gt)
     if not objs:
         raise ValueError("no ground-truth objects available")
@@ -268,18 +270,24 @@ def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tup
     table = objs["table"]
     map_rgb = objs["map_rgb"]
     level = int(objs.get("level", 0))
+    thr = getattr(table, "threshold", None)
     rows = match_rows(table)
     by_piece = {r["piece_index"]: r for r in rows if r.get("piece_index") is not None}
     by_label = {str(r["label"]): r for r in rows if r.get("label") is not None}
+    best_rows = list(objs.get("best_per_piece") or [])
+    best_by_index = {b.get("piece_index"): b for b in best_rows}
+    best_by_label = {str(b.get("label")): b for b in best_rows}
+    best_level = objs.get("best_level") or {}
     # labelled pieces first, in label order, so the grid reads like the map's grid
     pieces = sorted(pieces, key=lambda p: (getattr(p, "label", None) is None, str(getattr(p, "label", "")),
                                            int(getattr(p, "index", 0))))
-    cell_w, cell_h = 2 * thumb + 24, thumb + 40
+    cell_w, cell_h = 2 * thumb + 24, thumb + 58
     n = len(pieces)
     n_cols = max(1, int(np.ceil(n / per_column)))
     width, height = n_cols * cell_w + 8, min(n, per_column) * cell_h + 8
     out = np.full((max(height, 60), max(width, 320), 3), 250, np.uint8)
     matched = 0
+    one_to_one = False
     for k, piece in enumerate(pieces):
         col, row = divmod(k, per_column)
         x0, y0 = 4 + col * cell_w, 4 + row * cell_h
@@ -291,9 +299,11 @@ def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tup
             r = by_label.get(label)
         if r is None and k < len(rows) and not by_piece and not by_label:
             r = rows[k]
-        tile_id = r["tile_id"] if r else None
-        score = r["score"] if r else None
-        ok = bool(r["matched"]) if r else False
+        use_assigned = r is not None and r.get("assigned_tile_id") is not None
+        one_to_one = one_to_one or use_assigned
+        tile_id = (r["assigned_tile_id"] if use_assigned else r["tile_id"]) if r else None
+        score = (r.get("assigned_score") if use_assigned else r["score"]) if r else None
+        ok = bool(r.get("assigned_matched") if use_assigned else r["matched"]) if r else False
         matched += int(ok)
         head = (70, 170, 90) if ok else (205, 70, 70)
         cv2.rectangle(out, (x0, y0), (x0 + cell_w - 4, y0 + cell_h - 4), head, 2)
@@ -304,7 +314,18 @@ def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tup
         out[y0 + 28:y0 + 28 + thumb, x0 + 6:x0 + 6 + thumb] = _thumb(_piece_crop(map_rgb, piece), thumb)
         reg = _region_crop(session, level, tile_id) if tile_id is not None else None
         out[y0 + 28:y0 + 28 + thumb, x0 + 12 + thumb:x0 + 12 + 2 * thumb] = _thumb(reg, thumb)
-    cap = f"ground truth: {matched}/{n} map pieces matched at level {level} (map piece | matched region | score)"
+        best = best_by_index.get(pindex) if pindex is not None else None
+        if best is None:
+            best = best_by_label.get(label)
+        if best:
+            bcol = (40, 120, 60) if best.get("matched") else (120, 60, 60)
+            put_text(out, f"best: level {best.get('level')} r{best.get('region_id')} IoU {_fmt(best.get('score'), 2)}",
+                     (x0 + 6, y0 + 28 + thumb + 18), 0.42, bcol, 1)
+    cap = (f"ground truth: {matched}/{n} map pieces matched {'one-to-one' if one_to_one else 'greedily'} at level "
+           f"{level}" + (f" (shape IoU >= {_fmt(thr, 2)})" if thr is not None else ""))
+    if best_level:
+        cap += (f"; best level {best_level.get('index')}: {best_level.get('one_to_one_matched')}/{n} one-to-one")
+    cap += " (map piece | matched region | score; under each: best level reached)"
     return out, cap
 
 

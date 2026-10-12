@@ -192,6 +192,30 @@ def test_match_map_to_session_synthetic(synthetic_dir):
             assert row.tile_id == 5 and row.assigned_tile_id == 5 and row.colour > 0.99
 
 
+def test_default_threshold_is_documented_and_used():
+    assert gt.DEFAULT_THRESHOLD == 0.8
+    pieces = [_piece(1, _blob("a"), label="C1")]
+    table = gt.match_pieces(pieces, [("r0", _blob("disc"), (50.0, 0.0, 0.0))])
+    assert table.threshold == 0.8
+    assert table.rows[0].score < 0.8 and not table.rows[0].matched and table.rows[0].margin == pytest.approx(table.rows[0].score)
+
+
+def test_match_map_to_session_levels_synthetic(synthetic_dir):
+    s = Session.load(synthetic_dir)
+    res = gt.match_map_to_session_levels(s.working_rgb, s, None, threshold=0.9)
+    assert res["levels_evaluated"] == [0, 1, 2, 3] and res["levels_skipped"] == [] and res["subsampled"] is False
+    assert [x["index"] for x in res["levels"]] == [0, 1, 2, 3]
+    assert res["levels"][0]["one_to_one_fraction"] == 1.0 and res["levels"][3]["one_to_one_fraction"] < 1.0
+    assert res["best_level"]["index"] == 0 and res["never_matched"] == []
+    assert len(res["best_per_piece"]) == 5 and all(b["level"] == 0 and b["score"] > 0.99 for b in res["best_per_piece"])
+    assert set(res["_tables"]) == {0, 1, 2, 3} and len(res["_pieces"]) == 5
+    assert res["label_assignment"] is None
+    # a zero time budget subsamples every other remaining level but always keeps must_include
+    res2 = gt.match_map_to_session_levels(s.working_rgb, s, None, threshold=0.9, max_seconds=0.0, must_include=[0])
+    assert res2["subsampled"] is True and 0 in res2["levels_evaluated"]
+    assert res2["levels_skipped"] and set(res2["levels_skipped"]).isdisjoint(res2["levels_evaluated"])
+
+
 # ----------------------------------------------------------------------------- the real map
 @pytest.mark.sample
 def test_sample_map_segments_and_labels(sample_map, tmp_path):

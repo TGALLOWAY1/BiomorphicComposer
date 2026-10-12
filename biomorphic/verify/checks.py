@@ -502,68 +502,115 @@ def read_rgb(path: Path | str) -> np.ndarray:
 @_guarded("ground_truth")
 def ground_truth(session: Any, level: int, map_png: Path | str,
                  labels_path: Path | str | None = None,
-                 min_fraction: float = GROUND_TRUTH_MIN_FRACTION) -> CheckResult:
-    """Segment the hand-made map, label the pieces, match each piece to the best shape-matching region at
-    `level` (candidates = every region, mask = label_map == id); pass if the matched fraction >= 0.5."""
+                 min_fraction: float = GROUND_TRUTH_MIN_FRACTION, threshold: float | None = None,
+                 all_levels: bool = True, max_seconds: float = 60.0) -> CheckResult:
+    """Segment the hand-made map, label the pieces and shape-match them against the regions of the session.
+
+    Pass rule: at the picked `level`, the one-to-one assignment (every region used at most once) matches at
+    least `min_fraction` of the map pieces at shape IoU >= `threshold` (default groundtruth.DEFAULT_THRESHOLD
+    = 0.8; the note there says why 0.6 matched anything blob-like). The details carry the greedy table
+    (label, best tile, IoU, runner-up, margin), the one-to-one table, the best (level, region, IoU) per piece
+    over every level and the per-level one-to-one fraction, so a failure says which level does reproduce the
+    artist's components and which pieces never match at any level.
+    """
     from biomorphic.verify import groundtruth as gt
 
     level = int(level)
     map_png = Path(map_png)
     map_rgb = read_rgb(map_png)
-    pieces = list(gt.segment_map(map_rgb))
+    thr = float(gt.DEFAULT_THRESHOLD if threshold is None else threshold)
+    labels = None
     labels_loaded = False
     labels_note = None
-    assignment: dict[str, Any] = {}
     if labels_path is not None and Path(labels_path).exists():
         labels = gt.load_labels(Path(labels_path))
-        res = gt.assign_labels(pieces, labels)
-        if isinstance(res, list) and res and not isinstance(res[0], (dict, str)):
-            pieces = list(res)          # a module that returns relabelled pieces
-        # otherwise the pieces were labelled in place and `res` describes the assignment
-        assignment = {
-            "n_assigned": len(getattr(res, "assigned", {}) or {}),
-            "unmatched_labels": [e.get("label") for e in (getattr(res, "unmatched", []) or []) if isinstance(e, dict)],
-            "unlabelled_pieces": list(getattr(res, "unlabelled", []) or []),
-        }
         labels_loaded = True
     else:
         labels_note = f"labels file not found: {labels_path}" if labels_path else "no labels file given"
-    lab = session.label_map(level)
-    regions = session.regions(level)
-    candidates = [(int(rid), lab == rid, tuple(float(v) for v in info.mean_lab)) for rid, info in regions.items()]
-    table = gt.match_pieces(pieces, candidates)
+    res = gt.match_map_to_session_levels(map_rgb, session, labels, None if all_levels else [level],
+                                         threshold=thr, max_seconds=max_seconds, must_include=[level])
+    pieces = list(res["_pieces"])
+    table = res["_tables"][level]
     rows = match_rows(table)
-    matched = [r for r in rows if r["matched"]]
-    misses = [r for r in rows if not r["matched"]]
-    frac = (len(matched) / len(rows)) if rows else None
-    passed = False if frac is None else frac >= min_fraction
+    for r, tr in zip(rows, table.rows):
+        r["runner_up"] = float(tr.runner_up)
+        r["margin"] = float(tr.margin)
+    n = len(rows)
+    greedy_matched = [r for r in rows if r["matched"]]
+    greedy_misses = [{"label": r["label"], "tile_id": r["tile_id"], "score": r["score"]} for r in rows if not r["matched"]]
+    one_rows = [{"label": r["label"], "piece_index": r.get("piece_index"), "tile_id": r.get("assigned_tile_id"),
+                 "score": r.get("assigned_score"), "matched": bool(r.get("assigned_matched"))} for r in rows]
+    one_matched = [r for r in one_rows if r["matched"]]
+    one_misses = [r for r in one_rows if not r["matched"]]
+    frac_1 = (len(one_matched) / n) if n else None
+    frac_g = (len(greedy_matched) / n) if n else None
+    # the one-to-one assignment does not depend on the threshold, only the pass/fail label does, so the
+    # sensitivity of the headline number to the bar is cheap to report
+    assigned_scores = [r["score"] for r in one_rows if r["score"] is not None]
+    by_threshold = {f"{t:.2f}": (sum(sc >= t for sc in assigned_scores) / n if n else None)
+                    for t in (0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9)}
+    passed = False if frac_1 is None else frac_1 >= min_fraction
     scores = [r["score"] for r in rows if r["score"] is not None]
-    one_to_one = [r for r in rows if r.get("assigned_matched")]
-    one_to_one_frac = (len(one_to_one) / len(rows)) if rows and any("assigned_matched" in r for r in rows) else None
-    match_threshold = getattr(table, "threshold", None)
-    if frac is None:
-        summary = f"map {map_png.name}: no pieces/rows to match (pieces={len(pieces)}, candidates={len(candidates)})"
+    counts = {int(lv["index"]): int(lv["n_regions"]) for lv in session.levels}
+    n_regions = counts.get(level, table.n_candidates)
+    best_level = res["best_level"]
+    never = list(res["never_matched"])
+    why = ground_truth_why(level, n_regions, n, frac_1, best_level, never, res["best_per_piece"], thr)
+    if frac_1 is None:
+        summary = f"map {map_png.name}: no pieces/rows to match (pieces={len(pieces)}, candidates={table.n_candidates})"
     else:
-        summary = (f"map {map_png.name}: {len(matched)}/{len(rows)} pieces matched at level {level} "
-                   f"({frac:.0%}; threshold {min_fraction:.0%}"
-                   + (f", shape IoU >= {float(match_threshold):.2f}" if match_threshold is not None else "")
-                   + (f"; one-to-one {len(one_to_one)}/{len(rows)}" if one_to_one_frac is not None else "")
-                   + "); misses: " + (", ".join(str(m["label"]) for m in misses) if misses else "none"))
+        summary = (f"map {map_png.name}: one-to-one {len(one_matched)}/{n} pieces matched at level {level} "
+                   f"({frac_1:.0%}; pass >= {min_fraction:.0%} at shape IoU >= {thr:.2f}); greedy best "
+                   f"{len(greedy_matched)}/{n}"
+                   + (f"; best level {best_level['index']} ({best_level['n_regions']} regions) one-to-one "
+                      f"{best_level['one_to_one_matched']}/{n}" if best_level else "")
+                   + f"; never >= {thr:.2f} at any level: {', '.join(never) if never else 'none'}"
+                   + (f"; why: {' '.join(why)}" if why and not passed else ""))
+    candidates = gt.candidates_from_session(session, level)
     return CheckResult("ground_truth", passed, summary, {
-        "level": level, "map": str(map_png), "labels_path": None if labels_path is None else str(labels_path),
-        "labels_loaded": labels_loaded, "labels_note": labels_note, "label_assignment": assignment,
-        "n_pieces": len(pieces), "n_candidates": len(candidates), "n_rows": len(rows),
-        "n_matched": len(matched), "matched_fraction": frac, "rows": rows, "misses": misses,
-        "one_to_one_matched": len(one_to_one) if one_to_one_frac is not None else None,
-        "one_to_one_fraction": one_to_one_frac, "match_threshold": match_threshold,
+        "level": level, "n_regions_at_level": n_regions, "map": str(map_png),
+        "labels_path": None if labels_path is None else str(labels_path),
+        "labels_loaded": labels_loaded, "labels_note": labels_note, "label_assignment": res["label_assignment"] or {},
+        "n_pieces": len(pieces), "n_candidates": table.n_candidates, "n_rows": n, "match_threshold": thr,
+        "rows": rows, "misses": greedy_misses, "n_matched": len(greedy_matched), "matched_fraction": frac_g,
+        "one_to_one": one_rows, "one_to_one_matched": len(one_matched), "one_to_one_fraction": frac_1,
+        "one_to_one_misses": one_misses, "one_to_one_fraction_by_threshold": by_threshold,
+        "reused_tiles": {str(t): labs for t, labs in table.reused_tiles.items()}, "baseline": table.baseline,
         "score_min": min(scores) if scores else None, "score_median": float(np.median(scores)) if scores else None,
         "score_max": max(scores) if scores else None, "score_mean": float(np.mean(scores)) if scores else None,
-        "threshold": {"min_matched_fraction": min_fraction, "per_piece_match": match_threshold},
-        "measured": {"matched_fraction": frac, "n_matched": len(matched), "n_missed": len(misses),
-                     "one_to_one_fraction": one_to_one_frac, "score_mean": float(np.mean(scores)) if scores else None},
+        "levels": res["levels"], "best_per_piece": res["best_per_piece"], "best_level": best_level,
+        "never_matched": never, "levels_evaluated": res["levels_evaluated"], "levels_skipped": res["levels_skipped"],
+        "subsampled": res["subsampled"], "seconds_all_levels": res["seconds"], "why": why,
+        "threshold": {"min_one_to_one_fraction": min_fraction, "per_piece_iou": thr},
+        "measured": {"one_to_one_fraction": frac_1, "greedy_fraction": frac_g, "n_never_matched": len(never),
+                     "best_level": None if best_level is None else best_level["index"],
+                     "best_level_one_to_one_fraction": None if best_level is None else best_level["one_to_one_fraction"]},
         "_objects": {"pieces": pieces, "candidates": candidates, "table": table, "map_rgb": map_rgb,
-                     "level": level},
+                     "level": level, "best_per_piece": res["best_per_piece"], "best_level": best_level},
     })
+
+
+def ground_truth_why(level: int, n_regions: int, n_pieces: int, frac_1: float | None, best_level: dict | None,
+                     never: list, best_per_piece: list, thr: float) -> list[str]:
+    """Plain-language reasons for a ground-truth shortfall, read off the numbers (never tuned to pass)."""
+    out: list[str] = []
+    if frac_1 is None:
+        return out
+    if best_level and best_level["index"] != level and best_level["one_to_one_fraction"] > frac_1 + 1e-9:
+        coarser = best_level["n_regions"] < n_regions
+        out.append(f"level {best_level['index']} ({best_level['n_regions']} regions) reproduces more of the artist's "
+                   f"components one-to-one ({best_level['one_to_one_matched']}/{n_pieces}) than the picked level "
+                   f"{level} ({n_regions} regions), so the picked granularity is "
+                   f"{'finer' if coarser else 'coarser'} than the map's components.")
+    if never:
+        near = [b for b in best_per_piece if not b["matched"] and b["score"] >= thr - 0.1]
+        out.append(f"{len(never)} piece(s) never reach IoU {thr:.2f} at any level ({', '.join(str(v) for v in never)}): "
+                   f"no region at any level has their shape, i.e. the merge tree cuts them differently from the "
+                   f"artist (joined to a neighbour or split along internal ink)"
+                   + (f"; {len(near)} of them come within 0.1 of the threshold: "
+                      + ", ".join(f"{b['label']} {b['score']:.2f} at level {b['level']}" for b in near) if near else "")
+                   + ".")
+    return out
 
 
 # ----------------------------------------------------------------------------- 7. non-destructive renders

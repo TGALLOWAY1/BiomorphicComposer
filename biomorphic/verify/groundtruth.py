@@ -43,6 +43,14 @@ LABEL_RE = re.compile(LABEL_PATTERN)
 
 FRAME_SIZE = 64        # sqrt(area) of a normalised mask, in frame px
 FRAME_CANVAS = 192     # side of the square frame, px (room for shapes up to ~9:1 elongation)
+
+# A piece counts as matched when its scale-normalised shape IoU reaches this. Measured on the sample map
+# (every piece matched against the other 29, mirror allowed): mirror twins score median 0.93 (min 0.67, the
+# two B4 curls the artist drew differently) while the best *unrelated* piece scores median 0.68, max 0.79,
+# and against 80 random ellipses and blobs the best distractor reaches median 0.76, >= 0.8 for a third of
+# the pieces. So 0.6 matches almost anything blob-like; 0.8 is where "best match" starts to mean "the same
+# component". Judge borderline cases by the margin over the runner-up and prefer the one-to-one assignment.
+DEFAULT_THRESHOLD = 0.8
 # ±10° in 2.5° steps: the rotation pre-screen is one matrix product, so a finer grid is nearly free, and a
 # 5° grid costs long thin shapes up to ~0.15 IoU at the worst residual angle.
 DEFAULT_ROTATIONS = (-10.0, -7.5, -5.0, -2.5, 0.0, 2.5, 5.0, 7.5, 10.0)
@@ -416,11 +424,18 @@ class MatchRow:
     assigned_score: float = 0.0
     assigned_matched: bool = False
 
+    @property
+    def margin(self) -> float:
+        """Best minus runner-up shape IoU. Near zero means the piece would match several regions equally
+        (expect that when the candidates include the matched tile's own mirror twin)."""
+        return self.score - self.runner_up
+
     def to_json(self) -> dict[str, Any]:
         return {
             "label": self.label, "piece_index": self.piece_index, "tile_id": self.tile_id,
             "score": round(self.score, 4), "colour": round(self.colour, 4), "combined": round(self.combined, 4),
             "matched": self.matched, "transform": self.transform.to_json(), "runner_up": round(self.runner_up, 4),
+            "margin": round(self.margin, 4),
             "assigned_tile_id": self.assigned_tile_id, "assigned_score": round(self.assigned_score, 4),
             "assigned_matched": self.assigned_matched,
         }
@@ -453,7 +468,23 @@ class MatchTable:
 
     @property
     def misses(self) -> list[str]:
+        """Pieces whose greedy best candidate is below the threshold."""
         return [r.label for r in self.rows if not r.matched]
+
+    @property
+    def assigned_misses(self) -> list[str]:
+        """Pieces whose one-to-one assigned candidate is below the threshold: the headline misses."""
+        return [r.label for r in self.rows if not r.assigned_matched]
+
+    @property
+    def reused_tiles(self) -> dict[Hashable, list[str]]:
+        """Greedy-best tiles claimed by more than one piece. A blob-like region overlaps most blobby pieces
+        at 0.6-0.8 scale-normalised IoU, so it can be 'the best match' of many of them at once; the one-to-one
+        assignment is immune to this, which is why it is the headline number."""
+        by_tile: dict[Hashable, list[str]] = {}
+        for r in self.rows:
+            by_tile.setdefault(r.tile_id, []).append(r.label)
+        return {t: labs for t, labs in by_tile.items() if len(labs) > 1}
 
     @property
     def mean_score(self) -> float:
@@ -469,31 +500,42 @@ class MatchTable:
         return {
             "threshold": self.threshold, "colour_weight": self.colour_weight,
             "n_pieces": self.n_pieces, "n_candidates": self.n_candidates,
+            "headline": {"metric": "one-to-one assignment", "matched": sum(r.assigned_matched for r in self.rows),
+                         "matched_fraction": round(self.assigned_matched_fraction, 4), "misses": self.assigned_misses},
             "matched": sum(r.matched for r in self.rows), "matched_fraction": round(self.matched_fraction, 4),
             "assigned_matched_fraction": round(self.assigned_matched_fraction, 4),
             "mean_score": round(self.mean_score, 4), "baseline": round(self.baseline, 4), "misses": self.misses,
+            "assigned_misses": self.assigned_misses,
+            "reused_tiles": {str(t): labs for t, labs in self.reused_tiles.items()},
             "skipped_candidates": list(self.skipped_candidates),
             "rows": [r.to_json() for r in self.rows],
         }
 
     def to_markdown(self) -> str:
-        lines = ["| map label | tile id | shape IoU | runner-up | colour | matched | transform | 1:1 tile | 1:1 IoU |",
-                 "|---|---|---|---|---|---|---|---|---|"]
-        for r in self.rows:
-            lines.append(f"| {r.label} | {r.tile_id} | {r.score:.3f} | {r.runner_up:.3f} | {r.colour:.2f} | "
-                         f"{'yes' if r.matched else 'no'} | {r.transform.describe()} | "
-                         f"{r.assigned_tile_id if r.assigned_tile_id is not None else '-'} | {r.assigned_score:.3f} |")
-        lines.append("")
-        lines.append(f"{sum(r.matched for r in self.rows)}/{self.n_pieces} pieces matched at IoU >= {self.threshold} "
-                     f"(greedy); {sum(r.assigned_matched for r in self.rows)}/{self.n_pieces} one-to-one; "
-                     f"mean IoU {self.mean_score:.3f}; baseline (median over all pairs) {self.baseline:.3f}; "
-                     f"{self.n_candidates} candidates.")
+        n = self.n_pieces
+        lines = [f"**One-to-one assignment: {sum(r.assigned_matched for r in self.rows)}/{n} pieces matched at "
+                 f"shape IoU >= {self.threshold}** ({self.n_candidates} candidates)."]
+        if self.assigned_misses:
+            lines.append(f"Misses (one-to-one): {', '.join(self.assigned_misses)}.")
+        lines.append(f"Greedy best per piece: {sum(r.matched for r in self.rows)}/{n} at the threshold; mean IoU "
+                     f"{self.mean_score:.3f}; baseline (median IoU over all piece x candidate pairs) {self.baseline:.3f}.")
         if self.misses:
-            lines.append(f"Misses: {', '.join(self.misses)}.")
+            lines.append(f"Misses (greedy): {', '.join(self.misses)}.")
+        if self.reused_tiles:
+            lines.append("Tiles claimed by several pieces (greedy): " +
+                         "; ".join(f"{t} <- {', '.join(labs)}" for t, labs in self.reused_tiles.items()) + ".")
+        lines.append("")
+        lines += ["| map label | 1:1 tile | 1:1 IoU | ok | greedy tile | IoU | runner-up | margin | colour | transform |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
+        for r in self.rows:
+            lines.append(f"| {r.label} | {r.assigned_tile_id if r.assigned_tile_id is not None else '-'} | "
+                         f"{r.assigned_score:.3f} | {'yes' if r.assigned_matched else 'no'} | {r.tile_id} | "
+                         f"{r.score:.3f} | {r.runner_up:.3f} | {r.margin:+.3f} | {r.colour:.2f} | "
+                         f"{r.transform.describe()} |")
         return "\n".join(lines)
 
 
-def match_pieces(pieces: list[Piece], candidates: Sequence[Candidate], *, threshold: float = 0.6,
+def match_pieces(pieces: list[Piece], candidates: Sequence[Candidate], *, threshold: float = DEFAULT_THRESHOLD,
                  colour_weight: float = 0.15, allow_mirror: bool = True,
                  rotations: Sequence[float] = DEFAULT_ROTATIONS, max_shift: int = 8, refine_top: int = 2,
                  prune_margin: float | None = 0.2, min_candidate_area: int = 16,
@@ -502,8 +544,11 @@ def match_pieces(pieces: list[Piece], candidates: Sequence[Candidate], *, thresh
 
     candidates: (id, mask, mean_lab) for the regions of one session level; a mask may be the full image or
     just the region's bbox crop (only the shape matters). The ranking score is
-    (1 - colour_weight) * shape_iou + colour_weight * colour; `score` and `matched` (score >= threshold)
-    use the shape IoU alone so the table stays interpretable. With centre_colours the area-weighted mean
+    (1 - colour_weight) * shape_iou + colour_weight * colour; `score` and `matched` (score >= threshold,
+    default DEFAULT_THRESHOLD = 0.8, see the note there) use the shape IoU alone so the table stays
+    interpretable. The headline number is the one-to-one assignment (`assigned_matched_fraction`): a
+    blob-like region can be the greedy best of many pieces at once, the assignment lets it serve one. The
+    greedy table stays for diagnosis, with each row's runner-up and margin. With centre_colours the area-weighted mean
     Lab of each side is subtracted first, which cancels the lighting / white-balance difference between the
     map photo and the drawing photo. The translation refinement runs for the `refine_top` best rotations /
     flips of each pair and, with `prune_margin`, only for candidates within that IoU margin of the piece's
@@ -590,6 +635,91 @@ def match_map_to_session(map_rgb: np.ndarray, session: Any, level_index: int, la
         assign_labels(pieces, labels)
     table = match_pieces(pieces, candidates_from_session(session, level_index), **match_kw)
     return pieces, table
+
+
+def match_map_to_session_levels(map_rgb: np.ndarray, session: Any, labels: dict[str, Any] | None = None,
+                                levels: Sequence[int] | None = None, *, threshold: float = DEFAULT_THRESHOLD,
+                                max_seconds: float = 60.0, must_include: Sequence[int] = (),
+                                **match_kw: Any) -> dict[str, Any]:
+    """Evaluate every level of a session against the map (pieces segmented and labelled once).
+
+    Returns a dict with, per level, the one-to-one matched fraction at `threshold` (the headline), the
+    greedy "component present" count (pieces whose best region reaches the threshold), mean and baseline
+    IoU; per piece, the best (level, region id, score) over the evaluated levels; `best_level` (highest
+    one-to-one fraction, ties to the higher mean IoU); `never_matched` (pieces below the threshold at every
+    level). Levels are evaluated in order of region count, cheapest first; when the running time passes
+    `max_seconds` the remaining levels are subsampled every other one (`subsampled` says so and
+    `levels_skipped` lists them), and `must_include` levels are always evaluated. Live objects (pieces, the
+    MatchTable per level) ride under underscore keys that `checks.jsonable` strips.
+    """
+    import time as _time
+
+    t0 = _time.perf_counter()
+    pieces = segment_map(map_rgb)
+    label_result = assign_labels(pieces, labels) if labels is not None else None
+    n_levels = len(session.levels)
+    wanted = list(range(n_levels)) if levels is None else [int(l) for l in levels]
+    for m in must_include:
+        if int(m) not in wanted:
+            wanted.append(int(m))
+    counts = {int(l["index"]): int(l["n_regions"]) for l in session.levels}
+    order = sorted(set(wanted), key=lambda l: (int(l) not in set(int(m) for m in must_include), counts.get(l, 0)))
+    tables: dict[int, MatchTable] = {}
+    per_level: list[dict[str, Any]] = []
+    skipped: list[int] = []
+    subsampled = False
+    skip_next = False
+    for lv in order:
+        forced = int(lv) in set(int(m) for m in must_include)
+        if not forced and _time.perf_counter() - t0 > max_seconds:
+            subsampled = True
+            if skip_next:
+                skipped.append(int(lv))
+                skip_next = False
+                continue
+            skip_next = True
+        t1 = _time.perf_counter()
+        cands = candidates_from_session(session, int(lv))
+        table = match_pieces(pieces, cands, threshold=threshold, **match_kw)
+        tables[int(lv)] = table
+        per_level.append({
+            "index": int(lv), "n_regions": counts.get(int(lv), len(cands)), "n_candidates": table.n_candidates,
+            "one_to_one_matched": sum(r.assigned_matched for r in table.rows),
+            "one_to_one_fraction": table.assigned_matched_fraction,
+            "greedy_matched": sum(r.matched for r in table.rows), "greedy_fraction": table.matched_fraction,
+            "mean_score": table.mean_score, "baseline": table.baseline,
+            "reused_tiles": len(table.reused_tiles), "seconds": round(_time.perf_counter() - t1, 3),
+        })
+    per_level.sort(key=lambda d: d["index"])
+    best_per_piece: list[dict[str, Any]] = []
+    for i, p in enumerate(pieces):
+        best = None
+        for lv, table in sorted(tables.items()):  # ascending levels, so ties go to the finest level
+            row = table.rows[i]
+            if best is None or row.score > best["score"]:
+                best = {"label": p.name, "piece_index": p.index, "level": int(lv), "region_id": row.tile_id,
+                        "score": float(row.score), "margin": float(row.margin),
+                        "transform": row.transform.describe()}
+        if best is not None:
+            best["matched"] = best["score"] >= threshold
+            best_per_piece.append(best)
+    best_level = None
+    if per_level:
+        bl = max(per_level, key=lambda d: (d["one_to_one_fraction"], d["mean_score"]))
+        best_level = {"index": bl["index"], "n_regions": bl["n_regions"],
+                      "one_to_one_fraction": bl["one_to_one_fraction"], "one_to_one_matched": bl["one_to_one_matched"]}
+    return {
+        "threshold": float(threshold), "n_pieces": len(pieces),
+        "label_assignment": None if label_result is None else {
+            "n_assigned": len(label_result.assigned),
+            "unmatched_labels": [e.get("label") for e in label_result.unmatched],
+            "unlabelled_pieces": list(label_result.unlabelled)},
+        "levels": per_level, "best_per_piece": best_per_piece, "best_level": best_level,
+        "never_matched": [b["label"] for b in best_per_piece if not b["matched"]],
+        "levels_evaluated": sorted(tables), "levels_skipped": sorted(skipped), "subsampled": subsampled,
+        "seconds": round(_time.perf_counter() - t0, 3),
+        "_pieces": pieces, "_tables": tables,
+    }
 
 
 # ============================================================================= images for humans
