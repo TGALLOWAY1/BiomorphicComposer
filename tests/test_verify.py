@@ -126,6 +126,41 @@ def test_checks_degrade_to_not_run(synthetic_dir, tmp_path):
     assert json.dumps(r.to_json())  # serialisable, traceback included as text
 
 
+def test_match_rows_adapts_tuples_dicts_and_objects():
+    from dataclasses import dataclass
+
+    @dataclass
+    class Tr:
+        def describe(self) -> str:
+            return "mirror, +5deg"
+
+    @dataclass
+    class Row:
+        label: str
+        piece_index: int
+        tile_id: int
+        score: float
+        matched: bool
+        transform: Tr
+        assigned_tile_id: int
+        assigned_score: float
+        assigned_matched: bool
+
+    @dataclass
+    class Table:
+        rows: list
+
+    rows = C.match_rows(Table([Row("A1", 0, np.int64(7), np.float32(0.8), True, Tr(), 9, 0.7, True)]))
+    assert rows == [{"label": "A1", "tile_id": 7, "score": rows[0]["score"], "matched": True, "piece_index": 0,
+                     "assigned_tile_id": 9, "assigned_score": 0.7, "assigned_matched": True,
+                     "transform": "mirror, +5deg"}]
+    assert abs(rows[0]["score"] - 0.8) < 1e-6
+    assert C.match_rows([("B2", "tile-x", 0.4, False)]) == [{"label": "B2", "tile_id": "tile-x", "score": 0.4, "matched": False}]
+    assert C.match_rows({"rows": [{"label": None, "tile_id": None, "score": None, "matched": None}]}) == \
+        [{"label": None, "tile_id": None, "score": None, "matched": None}]
+    json.dumps(rows)
+
+
 def test_jsonable_strips_private_keys_and_numpy():
     d = {"a": np.int64(3), "b": np.float32(1.5), "_objects": {"big": np.zeros((100, 100))},
          "p": Path("x"), "t": (1, 2), "arr": np.arange(3), "nan": float("nan")}

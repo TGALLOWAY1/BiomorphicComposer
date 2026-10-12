@@ -269,7 +269,11 @@ def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tup
     map_rgb = objs["map_rgb"]
     level = int(objs.get("level", 0))
     rows = match_rows(table)
-    by_label = {str(r["label"]): r for r in rows}
+    by_piece = {r["piece_index"]: r for r in rows if r.get("piece_index") is not None}
+    by_label = {str(r["label"]): r for r in rows if r.get("label") is not None}
+    # labelled pieces first, in label order, so the grid reads like the map's grid
+    pieces = sorted(pieces, key=lambda p: (getattr(p, "label", None) is None, str(getattr(p, "label", "")),
+                                           int(getattr(p, "index", 0))))
     cell_w, cell_h = 2 * thumb + 24, thumb + 40
     n = len(pieces)
     n_cols = max(1, int(np.ceil(n / per_column)))
@@ -279,9 +283,13 @@ def gt_panel(session: Any, gt: Any, thumb: int = 96, per_column: int = 6) -> tup
     for k, piece in enumerate(pieces):
         col, row = divmod(k, per_column)
         x0, y0 = 4 + col * cell_w, 4 + row * cell_h
-        label = str(getattr(piece, "label", None) if getattr(piece, "label", None) is not None else getattr(piece, "index", k))
-        r = by_label.get(label)
-        if r is None and k < len(rows):
+        plabel = getattr(piece, "label", None)
+        pindex = getattr(piece, "index", None)
+        label = str(plabel) if plabel is not None else f"#{pindex if pindex is not None else k}"
+        r = by_piece.get(pindex) if pindex is not None else None
+        if r is None:
+            r = by_label.get(label)
+        if r is None and k < len(rows) and not by_piece and not by_label:
             r = rows[k]
         tile_id = r["tile_id"] if r else None
         score = r["score"] if r else None

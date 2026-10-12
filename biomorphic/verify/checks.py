@@ -450,8 +450,23 @@ def _row_fields(row: Any) -> tuple[Any, Any, Any, Any]:
             getattr(row, "score", None), getattr(row, "matched", None))
 
 
+def _opt(row: Any, name: str) -> Any:
+    if isinstance(row, dict):
+        return row.get(name)
+    return getattr(row, name, None)
+
+
+def _tile_id_value(v: Any) -> Any:
+    if v is None:
+        return None
+    return int(v) if isinstance(v, (int, np.integer)) else v
+
+
 def match_rows(table: Any) -> list[dict]:
-    """Normalise a MatchTable (object with .rows, dict with 'rows', or an iterable of rows) to dicts."""
+    """Normalise a MatchTable (object with .rows, dict with 'rows', or an iterable of rows) to dicts.
+
+    The four contract columns (label, tile_id, score, matched) are always present; the optional extras the
+    ground-truth module reports (piece_index, colour, combined, one-to-one assignment, transform) ride along."""
     rows = getattr(table, "rows", None)
     if rows is None and isinstance(table, dict):
         rows = table.get("rows")
@@ -460,10 +475,20 @@ def match_rows(table: Any) -> list[dict]:
     out = []
     for r in rows:
         label, tile_id, score, matched = _row_fields(r)
-        out.append({"label": None if label is None else str(label),
-                    "tile_id": None if tile_id is None else (int(tile_id) if isinstance(tile_id, (int, np.integer)) else tile_id),
-                    "score": None if score is None else float(score),
-                    "matched": None if matched is None else bool(matched)})
+        d = {"label": None if label is None else str(label),
+             "tile_id": _tile_id_value(tile_id),
+             "score": None if score is None else float(score),
+             "matched": None if matched is None else bool(matched)}
+        for extra in ("piece_index", "colour", "combined", "assigned_tile_id", "assigned_score", "assigned_matched"):
+            v = _opt(r, extra)
+            if v is not None:
+                d[extra] = _tile_id_value(v) if extra in ("piece_index", "assigned_tile_id") else (
+                    bool(v) if extra == "assigned_matched" else float(v))
+        tr = _opt(r, "transform")
+        if tr is not None:
+            desc = getattr(tr, "describe", None)
+            d["transform"] = desc() if callable(desc) else str(tr)
+        out.append(d)
     return out
 
 
@@ -485,17 +510,24 @@ def ground_truth(session: Any, level: int, map_png: Path | str,
     level = int(level)
     map_png = Path(map_png)
     map_rgb = read_rgb(map_png)
-    pieces = gt.segment_map(map_rgb)
+    pieces = list(gt.segment_map(map_rgb))
     labels_loaded = False
     labels_note = None
+    assignment: dict[str, Any] = {}
     if labels_path is not None and Path(labels_path).exists():
         labels = gt.load_labels(Path(labels_path))
         res = gt.assign_labels(pieces, labels)
-        pieces = res if res is not None else pieces
+        if isinstance(res, list) and res and not isinstance(res[0], (dict, str)):
+            pieces = list(res)          # a module that returns relabelled pieces
+        # otherwise the pieces were labelled in place and `res` describes the assignment
+        assignment = {
+            "n_assigned": len(getattr(res, "assigned", {}) or {}),
+            "unmatched_labels": [e.get("label") for e in (getattr(res, "unmatched", []) or []) if isinstance(e, dict)],
+            "unlabelled_pieces": list(getattr(res, "unlabelled", []) or []),
+        }
         labels_loaded = True
     else:
         labels_note = f"labels file not found: {labels_path}" if labels_path else "no labels file given"
-    pieces = list(pieces)
     lab = session.label_map(level)
     regions = session.regions(level)
     candidates = [(int(rid), lab == rid, tuple(float(v) for v in info.mean_lab)) for rid, info in regions.items()]
@@ -506,21 +538,29 @@ def ground_truth(session: Any, level: int, map_png: Path | str,
     frac = (len(matched) / len(rows)) if rows else None
     passed = False if frac is None else frac >= min_fraction
     scores = [r["score"] for r in rows if r["score"] is not None]
+    one_to_one = [r for r in rows if r.get("assigned_matched")]
+    one_to_one_frac = (len(one_to_one) / len(rows)) if rows and any("assigned_matched" in r for r in rows) else None
+    match_threshold = getattr(table, "threshold", None)
     if frac is None:
         summary = f"map {map_png.name}: no pieces/rows to match (pieces={len(pieces)}, candidates={len(candidates)})"
     else:
         summary = (f"map {map_png.name}: {len(matched)}/{len(rows)} pieces matched at level {level} "
-                   f"({frac:.0%}; threshold {min_fraction:.0%}); misses: "
-                   + (", ".join(str(m["label"]) for m in misses) if misses else "none"))
+                   f"({frac:.0%}; threshold {min_fraction:.0%}"
+                   + (f", shape IoU >= {float(match_threshold):.2f}" if match_threshold is not None else "")
+                   + (f"; one-to-one {len(one_to_one)}/{len(rows)}" if one_to_one_frac is not None else "")
+                   + "); misses: " + (", ".join(str(m["label"]) for m in misses) if misses else "none"))
     return CheckResult("ground_truth", passed, summary, {
         "level": level, "map": str(map_png), "labels_path": None if labels_path is None else str(labels_path),
-        "labels_loaded": labels_loaded, "labels_note": labels_note,
+        "labels_loaded": labels_loaded, "labels_note": labels_note, "label_assignment": assignment,
         "n_pieces": len(pieces), "n_candidates": len(candidates), "n_rows": len(rows),
         "n_matched": len(matched), "matched_fraction": frac, "rows": rows, "misses": misses,
+        "one_to_one_matched": len(one_to_one) if one_to_one_frac is not None else None,
+        "one_to_one_fraction": one_to_one_frac, "match_threshold": match_threshold,
         "score_min": min(scores) if scores else None, "score_median": float(np.median(scores)) if scores else None,
-        "score_max": max(scores) if scores else None,
-        "threshold": {"min_matched_fraction": min_fraction},
-        "measured": {"matched_fraction": frac, "n_matched": len(matched), "n_missed": len(misses)},
+        "score_max": max(scores) if scores else None, "score_mean": float(np.mean(scores)) if scores else None,
+        "threshold": {"min_matched_fraction": min_fraction, "per_piece_match": match_threshold},
+        "measured": {"matched_fraction": frac, "n_matched": len(matched), "n_missed": len(misses),
+                     "one_to_one_fraction": one_to_one_frac, "score_mean": float(np.mean(scores)) if scores else None},
         "_objects": {"pieces": pieces, "candidates": candidates, "table": table, "map_rgb": map_rgb,
                      "level": level},
     })

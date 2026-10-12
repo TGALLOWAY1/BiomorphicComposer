@@ -12,6 +12,7 @@ Nothing here raises past `drive_ui`: failures are captured as `ERR_<step>.png` a
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 import traceback
@@ -95,17 +96,46 @@ def launch_browser(playwright: Any) -> Any:
 
 
 # ----------------------------------------------------------------------------- choosing what to tap
-def tap_target(session: Any, level: int) -> dict:
-    """The region to tap at `level`: the member of the highest-IoU mirror pair (else the largest off-axis
-    region, else any region) and an interior point of it (distance-transform maximum, in image px)."""
+def saved_region_ids(library_dir: Path, session: Any, level: int) -> set[int]:
+    """Region ids at `level` of this session that already have a tile in the library (so that the drive
+    taps something whose Save really creates a tile). Read from provenance, else from the tile id pattern."""
+    out: set[int] = set()
+    try:
+        from biomorphic.library.db import Library
+        lib = Library.open(Path(library_dir))
+        tiles = lib.list_tiles()
+    except Exception:  # noqa: BLE001
+        return out
+    pat = re.compile(rf"-L{int(level):02d}-r(\d+)$")
+    for t in tiles:
+        prov = getattr(t, "provenance", None) or {}
+        if isinstance(prov, dict) and prov.get("region_id") is not None:
+            if str(prov.get("session_id")) == str(session.session_id) and int(prov.get("level_index", -1)) == int(level):
+                out.add(int(prov["region_id"]))
+            continue
+        m = pat.search(str(getattr(t, "id", "")))
+        if m:
+            out.add(int(m.group(1)))
+    return out
+
+
+def tap_target(session: Any, level: int, exclude: set[int] | None = None) -> dict:
+    """The region to tap at `level`: the member of the highest-IoU mirror pair whose tiles are not already
+    in the library (else the largest unsaved off-axis region, else any region) and an interior point of it
+    (distance-transform maximum, in image px)."""
+    exclude = set(exclude or ())
     pairing = session.pairing(level)
     regions = session.regions(level)
     pairs = sorted(pairing.get("pairs", []), key=lambda p: -float(p.get("iou", 0)))
     sides = pairing.get("sides", {})
-    if pairs:
+    fresh = [p for p in pairs if int(p["a"]) not in exclude and int(p["b"]) not in exclude]
+    if fresh:
+        rid, twin, iou = int(fresh[0]["a"]), int(fresh[0]["b"]), float(fresh[0]["iou"])
+    elif pairs and not exclude:
         rid, twin, iou = int(pairs[0]["a"]), int(pairs[0]["b"]), float(pairs[0]["iou"])
     else:
-        off = [r for r in regions if sides.get(r) != "axis"] or list(regions)
+        off = [r for r in regions if sides.get(r) != "axis" and r not in exclude] or \
+              [r for r in regions if r not in exclude] or list(regions)
         rid = max(off, key=lambda r: regions[r].area)
         twin, iou = None, None
     lab = session.label_map(level)
@@ -134,6 +164,21 @@ def _settle(page: Any, ms: int = 250) -> None:
     except Exception:  # noqa: BLE001
         pass
     page.wait_for_timeout(ms)
+
+
+def _wait_level_loaded(page: Any, level: int | None, timeout_ms: int, notes: list[str], what: str) -> None:
+    """Wait until #stage reports the level loaded and not busy (data-level == level, data-busy empty).
+    The page drops taps while a level is loading, so this must precede every tap and Save."""
+    try:
+        page.wait_for_function(
+            "(lv) => { const s = document.querySelector('#stage'); if (!s) return false;"
+            " const busy = (s.getAttribute('data-busy') || '') !== '';"
+            " const ready = (s.getAttribute('data-ready') || '') !== '' || !s.hasAttribute('data-ready');"
+            " const atLevel = lv === null || !s.hasAttribute('data-level') || s.getAttribute('data-level') === String(lv);"
+            " return !busy && ready && atLevel; }",
+            arg=level, timeout=timeout_ms)
+    except Exception:  # noqa: BLE001
+        notes.append(f"{what}: #stage did not report level {level} loaded / not busy within {timeout_ms / 1000:.0f} s")
 
 
 def _shot(page: Any, path: Path) -> str:
@@ -199,9 +244,11 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
         if level is None:
             level, _ = pick_level(session)
         level = int(level)
-        target = tap_target(session, level)
+        already = saved_region_ids(library_dir, session, level)
+        target = tap_target(session, level, exclude=already)
         expected_count = len(session.regions(level))
-        result.update({"picked_level": level, "tap_target": target, "expected_count": expected_count})
+        result.update({"picked_level": level, "tap_target": target, "expected_count": expected_count,
+                       "regions_already_saved": sorted(already)})
     except Exception as exc:  # noqa: BLE001
         result["error"] = f"not run: cannot prepare the session for the drive: {type(exc).__name__}: {exc}"
         result["traceback"] = traceback.format_exc()
@@ -249,6 +296,7 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
                                   "(UI test hooks not implemented yet)")
                 page.wait_for_selector("#stage")
                 page.wait_for_selector("#slider")
+                _wait_level_loaded(page, None, 15000, result["notes"], "initial load")
                 _settle(page, 500)
                 result["steps"][step] = _shot(page, ui_dir / f"{step}.png")
 
@@ -265,6 +313,7 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
                         arg=expected_count, timeout=8000)
                 except Exception:  # noqa: BLE001
                     result["notes"].append(f"#count did not show {expected_count} within 8 s after moving the slider")
+                _wait_level_loaded(page, level, 15000, result["notes"], "after slider")
                 _settle(page, 500)
                 result["slider_value"] = page.eval_on_selector("#slider", "el => el.value")
                 result["count_text"] = page.eval_on_selector("#count", "el => el.textContent") if page.query_selector("#count") else None
@@ -297,6 +346,7 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
                 # 04 save ---------------------------------------------------------------------
                 step = "04_save"
                 tray_before = page.evaluate(JS_TRAY_COUNT)
+                _wait_level_loaded(page, level, 10000, result["notes"], "before save")
                 page.click("#btn-save")
                 try:
                     page.wait_for_function(
@@ -338,6 +388,12 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
                     raise AssertionError("Save did not add any tile to the library")
                 if not lib["provenance_ok"]:
                     raise AssertionError(f"saved tiles lack provenance or PNG: {lib['tiles']}")
+                want = {target["region_id"]} | ({target["twin_id"]} if target["twin_id"] is not None else set())
+                got = saved_region_ids(library_dir, session, level)
+                result["tapped_regions_saved"] = sorted(want & got)
+                if not want <= got:
+                    raise AssertionError(f"tiles for regions {sorted(want - got)} did not land in the library "
+                                         f"(new tiles: {lib['saved_tile_ids']})")
             except _NotRun as exc:
                 result["error"] = f"not run: {exc}"
             except Exception as exc:  # noqa: BLE001

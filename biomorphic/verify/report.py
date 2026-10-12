@@ -127,16 +127,38 @@ def _section_numbers(r: CheckResult) -> list[str]:
                             [[p.get("a"), p.get("b"), _fmt(p.get("iou")), _fmt(p.get("dx"), 1), _fmt(p.get("dy"), 1),
                               _fmt(p.get("delta_e"), 1)] for p in prs[:12]])
     elif r.name == "ground_truth":
+        la = d.get("label_assignment") or {}
         lines += [f"- map: `{d.get('map')}`; labels: `{d.get('labels_path')}` "
                   f"({'loaded' if d.get('labels_loaded') else d.get('labels_note') or 'not loaded'})",
-                  f"- {d.get('n_pieces')} map pieces, {d.get('n_candidates')} candidate regions at level {d.get('level')}",
-                  f"- matched {d.get('n_matched')} of {d.get('n_rows')} ({_pct(d.get('matched_fraction'))}); "
-                  f"scores min/median/max = {_fmt(d.get('score_min'))} / {_fmt(d.get('score_median'))} / {_fmt(d.get('score_max'))}"]
+                  f"- {d.get('n_pieces')} map pieces, {d.get('n_candidates')} candidate regions at level {d.get('level')}"]
+        if la:
+            lines.append(f"- labels attached to {la.get('n_assigned')} pieces; label entries with no piece: "
+                         f"{la.get('unmatched_labels') or 'none'}; pieces left unlabelled: {la.get('unlabelled_pieces') or 'none'}")
+        lines.append(f"- matched {d.get('n_matched')} of {d.get('n_rows')} ({_pct(d.get('matched_fraction'))}) by the best "
+                     f"candidate per piece (shape IoU >= {_fmt(d.get('match_threshold'), 2)})"
+                     + (f"; one-to-one assignment {d.get('one_to_one_matched')} of {d.get('n_rows')} "
+                        f"({_pct(d.get('one_to_one_fraction'))})" if d.get("one_to_one_fraction") is not None else ""))
+        lines.append(f"- shape IoU min/median/mean/max = {_fmt(d.get('score_min'))} / {_fmt(d.get('score_median'))} / "
+                     f"{_fmt(d.get('score_mean'))} / {_fmt(d.get('score_max'))}")
         rows = d.get("rows") or []
         if rows:
+            has_1to1 = any("assigned_tile_id" in x for x in rows)
+            has_tr = any("transform" in x for x in rows)
+            headers = ["map label", "best tile (region id)", "shape IoU", "matched"]
+            if has_1to1:
+                headers += ["1:1 tile", "1:1 IoU"]
+            if has_tr:
+                headers += ["transform"]
+            body = []
+            for x in rows:
+                row = [x.get("label"), x.get("tile_id"), _fmt(x.get("score")), x.get("matched")]
+                if has_1to1:
+                    row += [x.get("assigned_tile_id"), _fmt(x.get("assigned_score"))]
+                if has_tr:
+                    row += [x.get("transform")]
+                body.append(row)
             lines.append("")
-            lines += _table(["map label", "tile (region id)", "score", "matched"],
-                            [[x.get("label"), x.get("tile_id"), _fmt(x.get("score")), x.get("matched")] for x in rows])
+            lines += _table(headers, body)
         misses = d.get("misses") or []
         lines.append("")
         lines.append("Misses: " + (", ".join(f"{m.get('label')} (best r{m.get('tile_id')} @ {_fmt(m.get('score'))})"
@@ -184,8 +206,10 @@ def _disagreements(results: list[CheckResult]) -> list[str]:
         d = r.details
         lines.append(f"### {CHECK_TITLES.get(r.name, r.name)}")
         lines.append("")
-        lines.append(f"- threshold: `{jsonable(d.get('threshold'))}`")
-        lines.append(f"- measured: `{jsonable(d.get('measured'))}`")
+        if d.get("threshold") is not None:
+            lines.append(f"- threshold: `{jsonable(d.get('threshold'))}`")
+        if d.get("measured") is not None:
+            lines.append(f"- measured: `{jsonable(d.get('measured'))}`")
         lines.append(f"- {r.summary}")
         lines.append("")
     not_run = [r for r in results if r.passed is None]
