@@ -520,6 +520,15 @@ let resizeTimer = 0;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 80); });
 
 // ---------------------------------------------------------------- init
+function defaultLevel(levels) {
+  // the level whose region count is nearest 60 on a log scale; ties go to the finer level
+  let best = 0, bestD = Infinity;
+  levels.forEach((lv, i) => {
+    const d = Math.abs(Math.log((lv.n_regions || 1) / 60));
+    if (d < bestD - 1e-9) { bestD = d; best = i; }
+  });
+  return best;
+}
 async function init() {
   try {
     const j = await api('/api/session');
@@ -531,7 +540,10 @@ async function init() {
     S.img = await loadImage('/api/working.png');
     S.W = S.img.naturalWidth; S.H = S.img.naturalHeight;
     render();
-    await Promise.all([loadLevel(0), refreshLibrary()]);
+    // open near the brief's target granularity (50-75 parts) rather than at the finest level
+    const start = defaultLevel(S.levels);
+    slider.value = String(start);
+    await Promise.all([loadLevel(start), refreshLibrary()]);
   } catch (e) {
     stageMsg.textContent = 'could not load the session';
     toast('Could not load the session: ' + e.message, 'err');

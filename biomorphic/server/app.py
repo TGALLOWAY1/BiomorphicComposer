@@ -30,6 +30,10 @@ log = logging.getLogger("biomorphic.server")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 INK_RGBA = (22, 33, 49, 255)                      # #162131, the reel's ink colour
+# Region boundaries sit on the ink by construction, so an ink-coloured overlay is invisible on the
+# drawing. Magenta reads on blue, green and grey fills and is distinct from the cyan selection and
+# the orange twin highlight.
+BOUNDARY_RGBA = (214, 51, 171, 255)
 RENDER_MODES = ("original", "greyscale", "outline", "remap")
 TILE_ID_RE = re.compile(r"^(?P<stem>.+)-(?P<session>[0-9a-f]{8})-L(?P<level>\d+)-r(?P<region>\d+)$")
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -377,7 +381,7 @@ class ReviewState:
             return tile_utils.encode_png(np.ascontiguousarray(out))
 
 
-def boundary_overlay(label_map: np.ndarray, rgba: tuple[int, int, int, int] = INK_RGBA) -> np.ndarray:
+def boundary_overlay(label_map: np.ndarray, rgba: tuple[int, int, int, int] = BOUNDARY_RGBA) -> np.ndarray:
     """RGBA HxWx4: 2-px region boundaries in `rgba`, transparent elsewhere.
 
     A boundary pixel is one whose right or lower neighbour has a different label; both sides of

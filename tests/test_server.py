@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from biomorphic.server.app import boundary_overlay, make_server
+from biomorphic.server.app import BOUNDARY_RGBA, boundary_overlay, make_server
 from biomorphic.session import GROUP_ID_BASE, Session
 from biomorphic.testing import RECTS
 from biomorphic.tiles import decode_png
@@ -118,7 +118,7 @@ def test_overlay_png_is_rgba_with_2px_boundaries(server):
     # cell 1 spans x 20..69: the edge pixels on both sides of x = 20 are boundary, the interior is not
     assert alpha[60, 19] == 255 and alpha[60, 20] == 255 and alpha[60, 18] == 0 and alpha[60, 21] == 0
     assert alpha[60, 45] == 0 and alpha[5, 5] == 0
-    assert tuple(rgba[60, 20]) == (22, 33, 49, 255)       # ink colour #162131
+    assert tuple(rgba[60, 20]) == BOUNDARY_RGBA              # the visible boundary colour
     # the synthetic cells are separated by paper, so merging them (level 2) changes no silhouette edge
     rgba2 = decode_png(get(server, "/api/levels/2/overlay.png")[2])
     assert np.array_equal(rgba2, rgba)
