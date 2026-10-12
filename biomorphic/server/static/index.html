@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Biomorphic Composer — review</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23139fca'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23d98d12'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --ink: #162131; --muted: #5a6878; --line: #d9dfe7;
+    --accent: #2a73b3; --sel: #139fca; --twin: #d98d12; --ok: #3f9a72; --err: #c0392b;
+    --shadow: 0 2px 10px rgba(22, 33, 49, .08);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1319; --card: #161d26; --ink: #e9eef4; --muted: #94a1b0; --line: #273341;
+            --shadow: 0 2px 12px rgba(0, 0, 0, .45); }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-tap-highlight-color: transparent; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  b { font-weight: 700; }
+
+  /* header */
+  #hdr { padding: 10px 12px 6px; max-width: 760px; width: 100%; margin: 0 auto; }
+  .hdr-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .brand { font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
+  .brand span { color: var(--muted); font-weight: 500; }
+  .chip { font-size: 12px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted); white-space: nowrap; }
+  .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+  .chip.err { color: var(--err); }
+  .hdr-meta { margin-top: 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* stage */
+  main { flex: 1 0 auto; width: 100%; max-width: 760px; margin: 0 auto; padding: 0 12px; }
+  #stage-wrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  #stage { display: block; width: 100%; touch-action: manipulation; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+  #stage-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 70%, transparent); pointer-events: none; }
+  #stage-msg:empty { display: none; }
+  #info { min-height: 22px; margin: 8px 2px 4px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  #info .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  #info .dot.sel { background: var(--sel); } #info .dot.twin { background: var(--twin); }
+  #info .part { color: var(--ink); }
+
+  /* tray */
+  #tray-wrap { margin: 6px 0 10px; }
+  .tray-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 6px; }
+  #tray-count { font-size: 12px; color: var(--muted); }
+  #tray { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  #tray:empty { display: none; }
+  #tray-empty { font-size: 12px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 12px; }
+  #tray:not(:empty) + #tray-empty { display: none; }
+  .tile { flex: 0 0 auto; width: 104px; scroll-snap-align: start; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; cursor: pointer; }
+  .tile:active { transform: scale(.97); }
+  .tile img { display: block; width: 90px; height: 72px; object-fit: contain; margin: 0 auto;
+    background: repeating-conic-gradient(color-mix(in srgb, var(--line) 50%, transparent) 0 25%, transparent 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
+  .tile .tile-id { font-size: 11px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .tile .badges { display: flex; gap: 4px; margin-top: 4px; }
+  .badge { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .badge { flex: 0 0 auto; }
+  .badge.pair { flex: 0 1 auto; min-width: 0; color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
+  .badge.axis { color: var(--accent); }
+
+  /* controls (sticky bottom) */
+  #controls { position: sticky; bottom: 0; z-index: 5; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line); padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
+  #controls > * { max-width: 736px; margin-left: auto; margin-right: auto; }
+  .readout { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .count-wrap { display: flex; align-items: baseline; gap: 8px; }
+  .count { font-family: var(--mono); font-size: 40px; line-height: 1; font-weight: 700; letter-spacing: -.02em; }
+  .count[data-approx="1"] { color: var(--muted); }
+  .level-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; color: var(--muted); }
+  #slider { display: block; width: 100%; margin: 8px 0 10px; height: 44px; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; touch-action: pan-y; }
+  #slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+  #slider::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--sel), var(--accent)); }
+  #slider::-moz-range-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--sel), var(--accent)); }
+  #slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 34px; height: 34px; margin-top: -13px; border-radius: 50%; background: var(--card); border: 3px solid var(--accent); box-shadow: var(--shadow); }
+  #slider::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: var(--card); border: 3px solid var(--accent); box-shadow: var(--shadow); }
+  .actions { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+  .btn { flex: 1 1 auto; min-height: 48px; min-width: 72px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 600 15px var(--sans); cursor: pointer; }
+  .btn:active:not(:disabled) { transform: scale(.97); filter: brightness(.95); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { background: transparent; }
+  .btn.warn { color: var(--twin); }
+  .toggle { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; min-height: 48px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: 500 13px var(--sans); color: var(--muted); cursor: pointer; user-select: none; }
+  .toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--twin); }
+  .toggle:has(input:checked) { color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
+
+  /* toast */
+  #toast { position: fixed; left: 50%; bottom: calc(176px + env(safe-area-inset-bottom)); transform: translate(-50%, 8px); z-index: 10;
+    max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font: 500 14px var(--sans);
+    box-shadow: var(--shadow); opacity: 0; visibility: hidden; transition: opacity .18s, transform .18s, visibility .18s; pointer-events: none; }
+  #toast[data-show="1"] { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+  #toast.ok { background: var(--ok); color: #fff; } #toast.err { background: var(--err); color: #fff; }
+</style>
+</head>
+<body>
+<header id="hdr">
+  <div class="hdr-row">
+    <div class="brand">Biomorphic <span>review</span></div>
+    <div id="hdr-lib" class="chip mono">library …</div>
+  </div>
+  <div class="hdr-meta mono"><span id="hdr-file">…</span> · axis x <span id="hdr-axis">–</span> · session <span id="hdr-session">–</span></div>
+</header>
+
+<main>
+  <div id="stage-wrap">
+    <canvas id="stage" data-selected="" data-twins="" data-level="" aria-label="the drawing; tap a part to select it"></canvas>
+    <div id="stage-msg">loading…</div>
+  </div>
+  <div id="info" class="mono"></div>
+  <section id="tray-wrap">
+    <div class="tray-head"><span class="eyebrow">Saved tiles</span><span id="tray-count" class="mono"></span></div>
+    <div id="tray"></div>
+    <div id="tray-empty" class="mono">No tiles saved yet — select a part and tap Save.</div>
+  </section>
+</main>
+
+<footer id="controls">
+  <div class="readout">
+    <div class="count-wrap"><span id="count" class="count">–</span><span class="eyebrow">regions</span></div>
+    <div class="level-wrap mono"><span>level <b id="level-idx">0</b> / <span id="level-max">0</span></span><span>cost <b id="cost">0.00</b></span></div>
+  </div>
+  <input id="slider" type="range" min="0" max="0" step="1" value="0" aria-label="granularity level">
+  <div class="actions">
+    <button id="btn-merge" class="btn" type="button" disabled>Merge</button>
+    <label class="toggle" title="when on, Merge also merges the mirror twins into a second group"><input id="mirror-merges" type="checkbox" checked><span>mirror merges</span></label>
+    <button id="btn-unmerge" class="btn ghost warn" type="button" hidden>Unmerge</button>
+    <button id="btn-save" class="btn primary" type="button" disabled>Save</button>
+    <button id="btn-clear" class="btn ghost" type="button">Clear</button>
+  </div>
+</footer>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const GROUP_ID_BASE = 1000000;
+const $ = (id) => document.getElementById(id);
+const stage = $('stage'), stageWrap = $('stage-wrap'), stageMsg = $('stage-msg'), slider = $('slider');
+const countEl = $('count'), costEl = $('cost'), levelIdx = $('level-idx'), levelMax = $('level-max');
+const btnMerge = $('btn-merge'), btnUnmerge = $('btn-unmerge'), btnSave = $('btn-save'), btnClear = $('btn-clear');
+const mirrorEl = $('mirror-merges'), tray = $('tray'), trayCount = $('tray-count'), toastEl = $('toast'), infoEl = $('info');
+const sctx = stage.getContext('2d');
+const hl = document.createElement('canvas');                  // highlight layer, same device size as the stage
+const hctx = hl.getContext('2d');
+
+const S = {
+  meta: null, levels: [], level: 0, W: 0, H: 0, dpr: 1,
+  img: null, overlay: null, ids: null,                         // ids: Uint32Array of region ids per working pixel
+  regions: new Map(), selected: new Set(), twins: new Set(),
+  library: [], version: 0, busy: false, ready: false,
+};
+
+// ---------------------------------------------------------------- helpers
+async function api(path, opts) {
+  const r = await fetch(path, Object.assign({ cache: 'no-store' }, opts || {}));
+  let j = null;
+  try { j = await r.json(); } catch (e) { /* not JSON */ }
+  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+  return j;
+}
+const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error('could not load ' + url));
+    im.src = url;
+  });
+}
+const fmt = (n) => Number(n).toLocaleString();
+let toastTimer = 0;
+function toast(msg, kind) {
+  toastEl.textContent = msg;
+  toastEl.className = kind || '';
+  toastEl.style.bottom = ($('controls').offsetHeight + 12) + 'px';   // just above the control bar, whatever its height
+  toastEl.dataset.show = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.dataset.show = ''; }, 2800);
+}
+const twinOf = (id) => { const r = S.regions.get(id); return r && r.twin != null ? r.twin : null; };
+
+// ---------------------------------------------------------------- level loading
+function decodeLabels(im) {
+  const c = document.createElement('canvas');
+  c.width = S.W; c.height = S.H;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(im, 0, 0);
+  const d = cx.getImageData(0, 0, S.W, S.H).data;
+  const n = S.W * S.H, ids = new Uint32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) ids[i] = d[p] | (d[p + 1] << 8) | (d[p + 2] << 16);
+  return ids;
+}
+let loadToken = 0;
+async function loadLevel(i) {
+  i = Math.max(0, Math.min(S.levels.length - 1, i | 0));
+  const token = ++loadToken;
+  S.level = i; slider.value = String(i); stage.dataset.level = '';
+  previewLevel(i);
+  setBusy(true);
+  try {
+    const v = S.version;
+    const [labels, overlay, regions] = await Promise.all([
+      loadImage(`/api/levels/${i}/labels.png?v=${v}`),
+      loadImage(`/api/levels/${i}/overlay.png?v=${v}`),
+      api(`/api/levels/${i}/regions`),
+    ]);
+    if (token !== loadToken) return;                          // a newer level request superseded this one
+    S.ids = decodeLabels(labels);
+    S.overlay = overlay;
+    S.regions = new Map(Object.entries(regions).map(([k, r]) => [Number(k), r]));
+    for (const id of [...S.selected]) if (!S.regions.has(id)) S.selected.delete(id);   // ids survive across levels when unchanged
+    deriveTwins();
+    stageMsg.textContent = '';
+    updateReadout(); render(); updateInfo();
+    stage.dataset.level = String(i);
+    if (!S.ready) { S.ready = true; stage.dataset.ready = '1'; }
+  } catch (e) {
+    if (token === loadToken) { stageMsg.textContent = 'level failed to load'; toast(e.message, 'err'); }
+  } finally {
+    if (token === loadToken) setBusy(false);
+  }
+}
+async function refreshRegions() {
+  try {
+    const regions = await api(`/api/levels/${S.level}/regions`);
+    S.regions = new Map(Object.entries(regions).map(([k, r]) => [Number(k), r]));
+    for (const id of [...S.selected]) if (!S.regions.has(id)) S.selected.delete(id);
+    deriveTwins(); updateReadout(); render(); updateInfo();
+  } catch (e) { toast(e.message, 'err'); }
+}
+function previewLevel(i) {
+  const lv = S.levels[i];
+  if (!lv) return;
+  levelIdx.textContent = i; costEl.textContent = Number(lv.cost || 0).toFixed(2);
+  if (i !== S.level || !S.ready) { countEl.textContent = lv.n_regions; countEl.dataset.approx = '1'; }
+}
+function updateReadout() {
+  countEl.textContent = S.regions.size; countEl.dataset.approx = '';
+  const lv = S.levels[S.level] || {};
+  levelIdx.textContent = S.level; costEl.textContent = Number(lv.cost || 0).toFixed(2);
+}
+let sliderTimer = 0;
+function requestLevel(i, immediate) {
+  i = Math.max(0, Math.min(S.levels.length - 1, i | 0));
+  slider.value = String(i); previewLevel(i);
+  clearTimeout(sliderTimer);
+  if (immediate) loadLevel(i); else sliderTimer = setTimeout(() => loadLevel(i), 140);
+}
+
+// ---------------------------------------------------------------- selection
+function deriveTwins() {
+  S.twins = new Set();
+  for (const s of S.selected) {
+    const t = twinOf(s);
+    if (t != null && !S.selected.has(t) && S.regions.has(t)) S.twins.add(t);
+  }
+  stage.dataset.selected = [...S.selected].join(',');
+  stage.dataset.twins = [...S.twins].join(',');
+  updateButtons();
+}
+function toggleRegion(id) {
+  if (!id || !S.regions.has(id)) return;
+  if (S.selected.has(id)) S.selected.delete(id);
+  else if (S.twins.has(id)) { for (const s of [...S.selected]) if (twinOf(s) === id) S.selected.delete(s); }   // tapping an orange twin deselects the pair
+  else S.selected.add(id);
+  deriveTwins(); render(); updateInfo();
+}
+function clearSelection() { if (!S.selected.size) return; S.selected.clear(); deriveTwins(); render(); updateInfo(); }
+function regionAt(clientX, clientY) {
+  if (!S.ids) return 0;
+  const r = stage.getBoundingClientRect();
+  const ix = Math.floor((clientX - r.left) / r.width * S.W), iy = Math.floor((clientY - r.top) / r.height * S.H);
+  if (ix < 0 || iy < 0 || ix >= S.W || iy >= S.H) return 0;
+  return S.ids[iy * S.W + ix];
+}
+function setBusy(b) { S.busy = b; stage.dataset.busy = b ? '1' : ''; updateButtons(); }
+function updateButtons() {
+  const n = S.selected.size;
+  btnMerge.disabled = S.busy || n < 2;
+  btnSave.disabled = S.busy || n === 0;
+  btnClear.disabled = S.busy;
+  const hasGroup = [...S.selected, ...S.twins].some((id) => id >= GROUP_ID_BASE);
+  btnUnmerge.hidden = !hasGroup; btnUnmerge.disabled = S.busy || !hasGroup;
+}
+function updateInfo() {
+  if (!S.selected.size) { infoEl.innerHTML = '<span>Tap a part · its mirror twin co-selects · pinch to zoom</span>'; return; }
+  const parts = [];
+  let i = 0;
+  for (const id of S.selected) {
+    const r = S.regions.get(id); if (!r) continue;
+    if (i++ >= 2) { parts.push(`<span>+${S.selected.size - 2} more</span>`); break; }
+    const name = id >= GROUP_ID_BASE ? `group ${id - GROUP_ID_BASE}` : `part ${id}`;
+    let s = `<span><i class="dot sel"></i><span class="part">${name}</span> · ${fmt(r.area)} px${r.saved_tile_id ? ' · saved' : ''}</span>`;
+    const t = r.twin != null ? S.regions.get(r.twin) : null;
+    if (t) s += `<span><i class="dot twin"></i><span class="part">${r.twin >= GROUP_ID_BASE ? 'group ' + (r.twin - GROUP_ID_BASE) : 'part ' + r.twin}</span> · mirror twin · IoU ${Number(r.iou).toFixed(2)}</span>`;
+    else s += `<span>· ${r.side === 'axis' ? 'on axis' : 'no twin'}</span>`;
+    parts.push(s);
+  }
+  infoEl.innerHTML = parts.join('');
+}
+
+// ---------------------------------------------------------------- drawing
+function sizeStage() {
+  const cssW = Math.max(1, Math.floor(stageWrap.clientWidth));
+  const cssH = Math.max(1, Math.round(cssW * S.H / S.W));
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const w = Math.round(cssW * dpr), h = Math.round(cssH * dpr);
+  if (stage.width !== w || stage.height !== h) { stage.width = w; stage.height = h; hl.width = w; hl.height = h; }
+  stage.style.width = cssW + 'px'; stage.style.height = cssH + 'px';
+  S.dpr = dpr;
+}
+function render() {
+  if (!S.img || !S.W) return;
+  sizeStage();
+  const w = stage.width, h = stage.height;
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, w, h);
+  sctx.imageSmoothingEnabled = true;
+  sctx.drawImage(S.img, 0, 0, w, h);
+  if (S.overlay) sctx.drawImage(S.overlay, 0, 0, w, h);
+  if (S.ids && (S.selected.size || S.twins.size)) { paintHighlights(); sctx.drawImage(hl, 0, 0); }
+  drawVectors();
+}
+const pack = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;    // little-endian RGBA
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+function paintHighlights() {
+  const w = hl.width, h = hl.height, W = S.W, H = S.H, ids = S.ids;
+  hctx.clearRect(0, 0, w, h);
+  let maxId = 0;
+  for (const id of S.selected) maxId = Math.max(maxId, id);
+  for (const id of S.twins) maxId = Math.max(maxId, id);
+  const kind = new Uint8Array(maxId + 1);
+  for (const id of S.selected) kind[id] = 1;
+  for (const id of S.twins) kind[id] = 2;
+  // only the union of the highlighted regions' bboxes (in stage px) needs scanning
+  const r = Math.max(1, Math.round(S.dpr * 0.75));
+  let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (const id of [...S.selected, ...S.twins]) {
+    const reg = S.regions.get(id); if (!reg) continue;   // ids of the next level while a reload is in flight
+    const b = reg.bbox;
+    x0 = Math.min(x0, Math.floor(b[0] * w / W) - r - 2); y0 = Math.min(y0, Math.floor(b[1] * h / H) - r - 2);
+    x1 = Math.max(x1, Math.ceil((b[0] + b[2]) * w / W) + r + 2); y1 = Math.max(y1, Math.ceil((b[1] + b[3]) * h / H) + r + 2);
+  }
+  x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(w, x1); y1 = Math.min(h, y1);
+  const bw = x1 - x0, bh = y1 - y0;
+  if (bw <= 0 || bh <= 0) return;
+  const img = hctx.createImageData(bw, bh);
+  const px = new Uint32Array(img.data.buffer);
+  const sid = new Uint32Array(bw * bh), kinds = new Uint8Array(bw * bh);
+  const colX = new Int32Array(bw);
+  for (let x = 0; x < bw; x++) colX[x] = Math.min(W - 1, ((x0 + x) * W / w) | 0);
+  const fill = [0, pack(0x13, 0x9f, 0xca, 0x6e), pack(0xd9, 0x8d, 0x12, 0x6e)];
+  const strong = [0, pack(0x13, 0x9f, 0xca, 0xff), pack(0xd9, 0x8d, 0x12, 0xff)];
+  for (let y = 0; y < bh; y++) {
+    const row = Math.min(H - 1, ((y0 + y) * H / h) | 0) * W, o = y * bw;
+    for (let x = 0; x < bw; x++) {
+      const id = ids[row + colX[x]];
+      sid[o + x] = id;
+      const k = id <= maxId ? kind[id] : 0;
+      if (k) { kinds[o + x] = k; px[o + x] = fill[k]; }
+    }
+  }
+  const stamp = (cx, cy, c) => {
+    for (let dy = -r; dy <= r; dy++) {
+      const yy = cy + dy; if (yy < 0 || yy >= bh) continue;
+      for (let dx = -r; dx <= r; dx++) { const xx = cx + dx; if (xx >= 0 && xx < bw) px[yy * bw + xx] = c; }
+    }
+  };
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const o = y * bw + x, k = kinds[o], id = sid[o];
+      let kk = 0;
+      if (x + 1 < bw && sid[o + 1] !== id && (k || kinds[o + 1])) kk = k || kinds[o + 1];
+      if (!kk && y + 1 < bh && sid[o + bw] !== id && (k || kinds[o + bw])) kk = k || kinds[o + bw];
+      if (kk) stamp(x, y, strong[kk]);
+    }
+  }
+  if (!LITTLE_ENDIAN) { const d = img.data; for (let i = 0; i < d.length; i += 4) { const a = d[i], b = d[i + 1], g = d[i + 2], rr = d[i + 3]; d[i] = rr; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; } }
+  hctx.putImageData(img, x0, y0);
+}
+function drawVectors() {
+  const w = stage.width, h = stage.height, sx = w / S.W, sy = h / S.H, dpr = S.dpr;
+  sctx.save();
+  // the mirror axis
+  if (S.meta && S.meta.axis) {
+    const ax = S.meta.axis.x * sx;
+    sctx.setLineDash([5 * dpr, 6 * dpr]); sctx.lineWidth = 1 * dpr; sctx.strokeStyle = 'rgba(217,141,18,0.55)';
+    sctx.beginPath(); sctx.moveTo(ax, 0); sctx.lineTo(ax, h); sctx.stroke();
+  }
+  // dashed link between a selected part and its twin
+  sctx.setLineDash([4 * dpr, 4 * dpr]); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#d98d12';
+  for (const s of S.selected) {
+    const t = twinOf(s); if (t == null || !S.regions.has(s) || !S.regions.has(t)) continue;
+    const a = S.regions.get(s).centroid, b = S.regions.get(t).centroid;
+    sctx.beginPath(); sctx.moveTo(a[0] * sx, a[1] * sy); sctx.lineTo(b[0] * sx, b[1] * sy); sctx.stroke();
+  }
+  // a green dot on every part that is already in the library
+  sctx.setLineDash([]);
+  for (const [, r] of S.regions) {
+    if (!r.saved_tile_id) continue;
+    const c = r.centroid;
+    sctx.beginPath(); sctx.arc(c[0] * sx, c[1] * sy, 4.5 * dpr, 0, Math.PI * 2);
+    sctx.fillStyle = '#3f9a72'; sctx.fill(); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#fff'; sctx.stroke();
+  }
+  sctx.restore();
+}
+
+// ---------------------------------------------------------------- actions
+async function doMerge() {
+  if (S.busy || S.selected.size < 2) return;
+  const ids = [...S.selected];
+  setBusy(true);
+  try {
+    const j = await post('/api/merge', { level: S.level, region_ids: ids, mirror: mirrorEl.checked });
+    S.version++;
+    S.selected = new Set(j.created.slice(0, 1));                // the new group is selected, its mirror group follows as the twin
+    toast(`Merged ${ids.length} parts into one` + (j.created.length > 1 ? ' (+ mirror)' : ''), 'ok');
+    await loadLevel(S.level);
+  } catch (e) { toast(e.message, 'err'); setBusy(false); }
+}
+async function doUnmerge() {                                     // acts on the selection, twins included, like Save
+  const groups = [...S.selected, ...S.twins].filter((id) => id >= GROUP_ID_BASE);
+  if (S.busy || !groups.length) return;
+  const idx = groups.map((id) => { const r = S.regions.get(id); return r && r.group_index != null ? r.group_index : id - GROUP_ID_BASE; })
+    .sort((a, b) => b - a);                                     // highest index first so the others do not shift
+  setBusy(true);
+  try {
+    for (const k of idx) await post('/api/unmerge', { group_index: k });
+    S.version++; S.selected.clear();
+    toast(`Unmerged ${idx.length} group${idx.length === 1 ? '' : 's'}`, 'ok');
+    await loadLevel(S.level);
+  } catch (e) { toast(e.message, 'err'); setBusy(false); }
+}
+async function doSave() {
+  const ids = [...S.selected, ...S.twins];
+  if (S.busy || !ids.length) return;
+  setBusy(true);
+  try {
+    const j = await post('/api/save', { level: S.level, region_ids: ids });
+    const n = (j.tiles || []).length;
+    toast(`Saved ${n} tile${n === 1 ? '' : 's'} to the library`, 'ok');
+    await Promise.all([refreshLibrary(), refreshRegions()]);
+  } catch (e) { toast(e.message, 'err'); }
+  finally { setBusy(false); }
+}
+
+// ---------------------------------------------------------------- tray
+const shortId = (id) => { const m = /-(L\d+-r\d+)$/.exec(id); return m ? m[1] : id; };
+async function refreshLibrary() {
+  try { const j = await api('/api/library'); S.library = j.tiles || []; }
+  catch (e) { S.library = []; }
+  renderTray();
+  const n = S.library.length;
+  trayCount.textContent = n ? `${n} tile${n === 1 ? '' : 's'}` : '';
+  const chip = $('hdr-lib');
+  if (S.libraryAvailable) { chip.textContent = `${n} tile${n === 1 ? '' : 's'} in library`; chip.className = 'chip mono ok'; }
+  else { chip.textContent = 'library unavailable'; chip.className = 'chip mono err'; }
+}
+function renderTray() {
+  tray.textContent = '';
+  const tiles = [...S.library].reverse();                       // newest first
+  for (const t of tiles) {
+    const card = document.createElement('div');
+    card.className = 'tile'; card.dataset.id = t.id; card.title = t.id;
+    const im = document.createElement('img');
+    im.src = t.png_url; im.alt = t.id; im.loading = 'lazy'; im.decoding = 'async';
+    const lab = document.createElement('div'); lab.className = 'tile-id mono'; lab.textContent = shortId(t.id);
+    const badges = document.createElement('div'); badges.className = 'badges';
+    const side = document.createElement('span'); side.className = 'badge' + (t.side === 'axis' ? ' axis' : ''); side.textContent = t.side === 'axis' ? 'on axis' : (t.side || '?');
+    badges.appendChild(side);
+    if (t.pair_tile_id) { const p = document.createElement('span'); p.className = 'badge pair'; p.textContent = '↔ ' + shortId(t.pair_tile_id).replace(/^L\d+-/, ''); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
+    card.append(im, lab, badges);
+    card.addEventListener('click', () => showTile(t.id));
+    tray.appendChild(card);
+  }
+}
+async function showTile(id) {                                   // tapping a saved tile points at the part it came from
+  const m = /-L(\d+)-r(\d+)$/.exec(id);
+  if (!m) return;
+  const level = Number(m[1]), rid = Number(m[2]);
+  if (level !== S.level) { S.selected = new Set([rid]); await loadLevel(level); return; }
+  S.selected = new Set(S.regions.has(rid) ? [rid] : []);
+  deriveTwins(); render(); updateInfo();
+}
+
+// ---------------------------------------------------------------- events
+// active pointer ids rather than a counter: a mouse or pen press that ends off the canvas never sends the
+// canvas a pointerup, and a counter would stay stuck at 1 and swallow every later tap
+const active = new Set();
+let down = null;
+const release = (e) => { active.delete(e.pointerId); if (down && e.pointerId === down.id) down = null; };
+stage.addEventListener('pointerdown', (e) => {
+  active.add(e.pointerId);
+  down = active.size === 1 ? { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId } : null;   // two fingers = pinch, not a tap
+});
+stage.addEventListener('pointerup', (e) => {
+  active.delete(e.pointerId);
+  if (!down || e.pointerId !== down.id) return;
+  const d = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = Date.now() - down.t;
+  down = null;
+  if (d < 12 && dt < 700 && !S.busy) toggleRegion(regionAt(e.clientX, e.clientY));
+});
+stage.addEventListener('pointercancel', release);
+stage.addEventListener('pointerleave', release);
+window.addEventListener('pointerup', release);
+stage.addEventListener('contextmenu', (e) => e.preventDefault());
+slider.addEventListener('input', () => requestLevel(Number(slider.value), false));
+slider.addEventListener('change', () => requestLevel(Number(slider.value), true));
+btnMerge.addEventListener('click', doMerge);
+btnUnmerge.addEventListener('click', doUnmerge);
+btnSave.addEventListener('click', doSave);
+btnClear.addEventListener('click', clearSelection);
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { clearSelection(); return; }
+  if (e.target === slider || e.target.tagName === 'INPUT') return;    // the slider handles its own arrows
+  if (e.key === 'ArrowLeft') { e.preventDefault(); requestLevel(S.level - 1, true); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); requestLevel(S.level + 1, true); }
+});
+let resizeTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 80); });
+
+// ---------------------------------------------------------------- init
+function defaultLevel(levels) {
+  // the level whose region count is nearest 60 on a log scale; ties go to the finer level
+  let best = 0, bestD = Infinity;
+  levels.forEach((lv, i) => {
+    const d = Math.abs(Math.log((lv.n_regions || 1) / 60));
+    if (d < bestD - 1e-9) { bestD = d; best = i; }
+  });
+  return best;
+}
+async function init() {
+  try {
+    const j = await api('/api/session');
+    S.meta = j.meta; S.levels = j.meta.levels || []; S.libraryAvailable = !!j.library;
+    $('hdr-file').textContent = (j.meta.source && j.meta.source.filename) || '?';
+    $('hdr-axis').textContent = j.meta.axis ? Math.round(j.meta.axis.x) : '–';
+    $('hdr-session').textContent = j.meta.session_id || '–';
+    slider.max = String(Math.max(0, S.levels.length - 1)); levelMax.textContent = Math.max(0, S.levels.length - 1);
+    S.img = await loadImage('/api/working.png');
+    S.W = S.img.naturalWidth; S.H = S.img.naturalHeight;
+    render();
+    // open near the brief's target granularity (50-75 parts) rather than at the finest level
+    const start = defaultLevel(S.levels);
+    slider.value = String(start);
+    await Promise.all([loadLevel(start), refreshLibrary()]);
+  } catch (e) {
+    stageMsg.textContent = 'could not load the session';
+    toast('Could not load the session: ' + e.message, 'err');
+  }
+}
+init();
+})();
+</script>
+</body>
+</html>

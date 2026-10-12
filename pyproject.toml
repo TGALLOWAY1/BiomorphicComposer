@@ -1,0 +1,32 @@
+[project]
+name = "biomorphic-composer"
+version = "0.1.0"
+description = "Turn a photo of a bilaterally symmetric biomorphic drawing into a reviewed, mirror-paired, provenance-tagged tile library."
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "opencv-python-headless>=4.9",
+  "scikit-image>=0.22",
+  "scipy>=1.11",
+  "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "playwright>=1.49"]
+
+[project.scripts]
+biomorphic = "biomorphic.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["biomorphic*"]
+
+[tool.setuptools.package-data]
+biomorphic = ["server/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["sample: slow tests that run on the real sample photo"]

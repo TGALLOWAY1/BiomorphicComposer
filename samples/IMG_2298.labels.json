@@ -1,0 +1,278 @@
+{
+ "map": "IMG_2298.png",
+ "image_size": [
+  896,
+  1195
+ ],
+ "scheme": "letter = grid row (A-E top to bottom); number = 1-7 left to right with 4 on the symmetry axis in rows C/D/E (mirror pairs sum to 8), grid-cell number in rows A/B. Suffix when one handwritten label covers several pieces: -L/-R side by side, -T/-M/-B stacked top to bottom on the axis. 'written' is the artist's handwritten label the piece sits under (null when it has none of its own); 'confidence' is low when the label is inferred rather than read. Entries are keyed by centroid (cx, cy) and area in map pixels; assign_labels attaches them to the nearest segmented piece.",
+ "notes": [
+  "Pieces the artist drew touching (shared ink line, no paper gap) segment as one component: the leg assemblies D1 and D7 (crescent + hip blob + foot each). The bottom label strip reads D1 . E3 . E4 . D6 . D7, so the artist seems to count the right foot as D6 (and by symmetry the left foot as D2); those sub-pieces are not separable without cutting along ink.",
+  "The small pod C4-M sits on the lozenge C4-B with a gap of a pixel or two; it separates with the default parameters but is the most fragile boundary of the map.",
+  "A1, A5 and E1 are empty grid cells; their labels mark no piece."
+ ],
+ "pieces": [
+  {
+   "label": "A2",
+   "cx": 261.3,
+   "cy": 157.7,
+   "area": 4339,
+   "confidence": "high",
+   "written": "A2"
+  },
+  {
+   "label": "A3",
+   "cx": 450.8,
+   "cy": 141.6,
+   "area": 23202,
+   "confidence": "high",
+   "written": "A3",
+   "note": "crown on the axis; drawn with internal ink detail lines, one piece"
+  },
+  {
+   "label": "A4",
+   "cx": 642.5,
+   "cy": 156.4,
+   "area": 4430,
+   "confidence": "high",
+   "written": "A4"
+  },
+  {
+   "label": "B1",
+   "cx": 120.9,
+   "cy": 318.7,
+   "area": 12705,
+   "confidence": "high",
+   "written": "B1"
+  },
+  {
+   "label": "B2",
+   "cx": 282.4,
+   "cy": 320.4,
+   "area": 13157,
+   "confidence": "high",
+   "written": "B2"
+  },
+  {
+   "label": "B3-T",
+   "cx": 451.7,
+   "cy": 283.6,
+   "area": 7984,
+   "confidence": "high",
+   "written": "B3",
+   "note": "collar; B3 covers two pieces stacked on the axis (collar above goblet)"
+  },
+  {
+   "label": "B4-L",
+   "cx": 584.8,
+   "cy": 326.3,
+   "area": 3515,
+   "confidence": "high",
+   "written": "B4",
+   "note": "left of the two curls in cell B4"
+  },
+  {
+   "label": "B4-R",
+   "cx": 663.1,
+   "cy": 315.0,
+   "area": 3634,
+   "confidence": "high",
+   "written": "B4",
+   "note": "right of the two curls in cell B4"
+  },
+  {
+   "label": "B5-L",
+   "cx": 743.0,
+   "cy": 310.4,
+   "area": 2355,
+   "confidence": "high",
+   "written": "B5",
+   "note": "left of the two nubs in cell B5"
+  },
+  {
+   "label": "B5-R",
+   "cx": 820.6,
+   "cy": 310.2,
+   "area": 2449,
+   "confidence": "high",
+   "written": "B5",
+   "note": "right of the two nubs in cell B5"
+  },
+  {
+   "label": "B3-B",
+   "cx": 452.1,
+   "cy": 369.4,
+   "area": 3796,
+   "confidence": "high",
+   "written": "B3",
+   "note": "goblet, below the collar in cell B3"
+  },
+  {
+   "label": "C4-T",
+   "cx": 452.2,
+   "cy": 464.4,
+   "area": 7152,
+   "confidence": "low",
+   "written": null,
+   "note": "arched piece at the top of the axis column of row C; no label of its own (the piece fills the cell's corner), C4 is written below the lozenge"
+  },
+  {
+   "label": "C1",
+   "cx": 113.9,
+   "cy": 515.1,
+   "area": 18053,
+   "confidence": "high",
+   "written": "C1"
+  },
+  {
+   "label": "C2",
+   "cx": 271.4,
+   "cy": 521.6,
+   "area": 10979,
+   "confidence": "high",
+   "written": "C2",
+   "note": "label repeated below the piece in the next grid row"
+  },
+  {
+   "label": "C3",
+   "cx": 368.3,
+   "cy": 554.0,
+   "area": 6592,
+   "confidence": "high",
+   "written": "C3"
+  },
+  {
+   "label": "C4-M",
+   "cx": 451.9,
+   "cy": 533.6,
+   "area": 1694,
+   "confidence": "low",
+   "written": null,
+   "note": "small pod sitting on the lozenge; drawn touching it, separates only by a narrow gap"
+  },
+  {
+   "label": "C4-B",
+   "cx": 452.8,
+   "cy": 595.6,
+   "area": 3965,
+   "confidence": "high",
+   "written": "C4",
+   "note": "lozenge; C4 is written just below it where it crosses into the next grid row"
+  },
+  {
+   "label": "C5",
+   "cx": 535.8,
+   "cy": 554.3,
+   "area": 6436,
+   "confidence": "high",
+   "written": "C5"
+  },
+  {
+   "label": "C6",
+   "cx": 636.1,
+   "cy": 517.9,
+   "area": 11088,
+   "confidence": "high",
+   "written": "C6",
+   "note": "label repeated below the piece in the next grid row"
+  },
+  {
+   "label": "C7",
+   "cx": 786.0,
+   "cy": 513.3,
+   "area": 18102,
+   "confidence": "high",
+   "written": "C7",
+   "note": "label repeated below the piece in the next grid row"
+  },
+  {
+   "label": "D3",
+   "cx": 363.5,
+   "cy": 681.8,
+   "area": 5039,
+   "confidence": "low",
+   "written": null,
+   "note": "left club-shaped piece; no handwritten label of its own, cell corner reads C4; D3 by the 1-7 numbering of the D row (D1/D7 start in this row), twin of D5"
+  },
+  {
+   "label": "D4-T",
+   "cx": 453.1,
+   "cy": 726.1,
+   "area": 8975,
+   "confidence": "low",
+   "written": null,
+   "note": "green pod on the axis above the pelvis; no label of its own (cell corner reads C4); D4-T by position"
+  },
+  {
+   "label": "D5",
+   "cx": 543.6,
+   "cy": 687.3,
+   "area": 5484,
+   "confidence": "low",
+   "written": null,
+   "note": "right club-shaped piece; see D3"
+  },
+  {
+   "label": "D1",
+   "cx": 208.3,
+   "cy": 852.3,
+   "area": 44429,
+   "confidence": "high",
+   "written": "D1",
+   "note": "left leg assembly: crescent + hip blob + blue foot are drawn touching (shared ink, no paper gap) and come out as one component; D1 is written in all three grid rows it crosses"
+  },
+  {
+   "label": "D4-B",
+   "cx": 451.6,
+   "cy": 876.2,
+   "area": 20643,
+   "confidence": "high",
+   "written": "D4",
+   "note": "pelvis; D4 written at its top right (a stray C4 is written at its bottom left)"
+  },
+  {
+   "label": "D7",
+   "cx": 691.2,
+   "cy": 854.8,
+   "area": 44874,
+   "confidence": "high",
+   "written": "D7",
+   "note": "right leg assembly (crescent + hip + foot, one component as for D1); D7 written in rows 4 and 5 and at the bottom; the bottom strip also reads D6 under its foot, so the artist may count the foot separately"
+  },
+  {
+   "label": "E3",
+   "cx": 359.8,
+   "cy": 1018.1,
+   "area": 4988,
+   "confidence": "high",
+   "written": "E3",
+   "note": "left eye; E3 written directly below it"
+  },
+  {
+   "label": "E4-B",
+   "cx": 450.9,
+   "cy": 1070.9,
+   "area": 4585,
+   "confidence": "low",
+   "written": "E4",
+   "note": "wishbone on the axis; the handwritten E4 sits between it and the right eye"
+  },
+  {
+   "label": "E4-T",
+   "cx": 451.0,
+   "cy": 1013.9,
+   "area": 1088,
+   "confidence": "low",
+   "written": null,
+   "note": "small bar between the eyes, above the wishbone; no label of its own"
+  },
+  {
+   "label": "E5",
+   "cx": 544.6,
+   "cy": 1017.4,
+   "area": 5180,
+   "confidence": "low",
+   "written": "E4",
+   "note": "right eye; the nearest handwritten label (E4, below left of it) is read as the wishbone's, E5 follows the mirror convention used in rows C/D (E3 <-> E5)"
+  }
+ ]
+}
