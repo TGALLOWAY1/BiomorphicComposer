@@ -5,7 +5,8 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
-work/
-verify_out/
-library/
+# project outputs at the repository root only (never the biomorphic/library package)
+/work/
+/verify_out/
+/library/
 .playwright/
