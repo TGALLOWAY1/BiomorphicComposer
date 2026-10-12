@@ -171,11 +171,14 @@ CREATE TRIGGER provenance_immutable BEFORE UPDATE ON provenance BEGIN SELECT RAI
 
 ```
 GET  /                                 index.html
-GET  /api/session                      {"meta": session.json, "groups": [...], "library_dir": ...}
+GET  /api/session                      {"meta": session.json, "groups": [...], "library": Library.summary() + "tile_count"
+                                        (null when the library is unavailable), "library_dir": ..., "n_leaves": N}
 GET  /api/working.png
 GET  /api/levels/<i>/labels.png        RGB PNG, region id = R | G<<8 | B<<16 (0 = background), groups applied
 GET  /api/levels/<i>/overlay.png       RGBA PNG: 2-px region boundaries (ink colour) for drawing over the photo
-GET  /api/levels/<i>/regions           {"<id>": {"area","bbox","centroid","side","twin","iou","saved_tile_id"}}
+GET  /api/levels/<i>/regions           {"<id>": {"area","bbox","centroid","side","twin","iou","saved_tile_id","group_index"}}
+                                        twin/iou null when unpaired, saved_tile_id null unless that region is in the library,
+                                        group_index null unless the region is a manual group
 POST /api/merge     {"level": i, "region_ids": [...], "mirror": true}   -> {"groups": [...], "created": [group_ids]}
 POST /api/unmerge   {"group_index": k}
 POST /api/save      {"level": i, "region_ids": [...]}                   -> {"tiles": [{"id","png_url","side","pair_tile_id"}]}
@@ -184,6 +187,18 @@ GET  /api/tiles/<id>.png?mode=original|greyscale|outline|remap
 ```
 
 UI behaviour: one slider = level index (shows the region count); tap a region to toggle it in the selection, its mirror twin co-selects (selected = cyan, twin = orange, axis-regions have no twin); **Merge** unions the tapped regions into one group and, when "mirror merges" is on and every tapped region has a twin, the twins into a second group; **Save** writes every selected region (twins included) to the library and links pairs; a tray shows saved tiles. Phone width first (375 px), large hit targets, no build step, no external assets.
+
+Details as implemented: tapping an orange twin deselects the pair; the selection survives a level change for region ids that still exist; after Merge the new group is selected (its mirror group follows as the twin); **Unmerge** appears when a selected region or twin is a manual group and removes those groups; Save returns tiles that already exist instead of failing and links a lone twin to its partner's existing tile; every error is JSON `{"error": ...}` with a status (400 bad request, 404 unknown level/region/tile, 405 wrong method, 503 library unavailable, 501 render not implemented). Level PNGs are cached per (level, groups) and sent `Cache-Control: no-store`.
+
+### UI test hooks
+
+Stable ids and attributes for Playwright (`tests/test_ui_playwright.py`, `verify/ui_drive.py`); `biomorphic/server/browser.py: launch_chromium(playwright, **kw)` launches Chromium here (default launch, then `$PLAYWRIGHT_CHROMIUM_EXECUTABLE`, then `/opt/pw-browsers/chromium`).
+
+- `#stage` — the visible canvas; it shows the whole working image scaled to the width, so image px map to page px through its bounding box. Attributes: `data-selected` / `data-twins` (comma-separated region ids: tapped regions / their co-selected mirror twins), `data-level` (the level on screen; empty while one loads), `data-ready="1"` once the first level is drawn, `data-busy="1"` during a request.
+- `#slider` — range input over level indices. `ArrowLeft`/`ArrowRight` move it (focused or not), `Escape` clears the selection. `#count` is the region count at the shown level as a bare number (`data-approx="1"` while a level is still loading); `#cost`, `#level-idx`, `#level-max`.
+- `#btn-merge` (disabled unless ≥ 2 tapped regions), `#mirror-merges` (checkbox, checked by default), `#btn-unmerge` (hidden unless applicable), `#btn-save` (disabled when nothing is selected), `#btn-clear`.
+- `#tray` — one `.tile[data-id="<tile id>"]` child per saved tile, newest first, with an `img` from `/api/tiles/<id>.png` and a `.badge.pair` when linked; the empty-state text sits outside `#tray`, so `#tray.children.length` is the tile count. `#tray-count`, `#hdr-lib` (tile count, or "library unavailable"), `#hdr-file`, `#hdr-axis`, `#hdr-session`.
+- `#toast` — status messages, shown with `data-show="1"` (hidden through `visibility: hidden`); after Save it reads `Saved N tile(s) to the library`. `#info` is the mono readout under the stage (part ids, area, IoU, "saved").
 
 ## Verify (`biomorphic/verify`)
 

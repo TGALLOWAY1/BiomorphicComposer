@@ -60,8 +60,9 @@
     background: repeating-conic-gradient(color-mix(in srgb, var(--line) 50%, transparent) 0 25%, transparent 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
   .tile .tile-id { font-size: 11px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
   .tile .badges { display: flex; gap: 4px; margin-top: 4px; }
-  .badge { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
-  .badge.pair { color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
+  .badge { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .badge { flex: 0 0 auto; }
+  .badge.pair { flex: 0 1 auto; min-width: 0; color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
   .badge.axis { color: var(--accent); }
 
   /* controls (sticky bottom) */
@@ -285,7 +286,7 @@ function updateButtons() {
   btnMerge.disabled = S.busy || n < 2;
   btnSave.disabled = S.busy || n === 0;
   btnClear.disabled = S.busy;
-  const hasGroup = [...S.selected].some((id) => id >= GROUP_ID_BASE);
+  const hasGroup = [...S.selected, ...S.twins].some((id) => id >= GROUP_ID_BASE);
   btnUnmerge.hidden = !hasGroup; btnUnmerge.disabled = S.busy || !hasGroup;
 }
 function updateInfo() {
@@ -423,8 +424,8 @@ async function doMerge() {
     await loadLevel(S.level);
   } catch (e) { toast(e.message, 'err'); setBusy(false); }
 }
-async function doUnmerge() {
-  const groups = [...S.selected].filter((id) => id >= GROUP_ID_BASE);
+async function doUnmerge() {                                     // acts on the selection, twins included, like Save
+  const groups = [...S.selected, ...S.twins].filter((id) => id >= GROUP_ID_BASE);
   if (S.busy || !groups.length) return;
   const idx = groups.map((id) => { const r = S.regions.get(id); return r && r.group_index != null ? r.group_index : id - GROUP_ID_BASE; })
     .sort((a, b) => b - a);                                     // highest index first so the others do not shift
@@ -473,7 +474,7 @@ function renderTray() {
     const badges = document.createElement('div'); badges.className = 'badges';
     const side = document.createElement('span'); side.className = 'badge' + (t.side === 'axis' ? ' axis' : ''); side.textContent = t.side === 'axis' ? 'on axis' : (t.side || '?');
     badges.appendChild(side);
-    if (t.pair_tile_id) { const p = document.createElement('span'); p.className = 'badge pair'; p.textContent = '↔ ' + shortId(t.pair_tile_id); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
+    if (t.pair_tile_id) { const p = document.createElement('span'); p.className = 'badge pair'; p.textContent = '↔ ' + shortId(t.pair_tile_id).replace(/^L\d+-/, ''); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
     card.append(im, lab, badges);
     card.addEventListener('click', () => showTile(t.id));
     tray.appendChild(card);
