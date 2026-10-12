@@ -74,7 +74,7 @@ new pieces from them.* Flow: **capture → split → merge → review → librar
 
 **Gloss:** *Merge tree: a family tree of regions. Cut low for many small parts, high for a few big ones. No new boundaries get drawn.*
 
-**Numbers to treat as illustrative:** 376/220/128/90 for drawing 1; drawing 2 goes 491 fragments → 99 parts. After review, drawing 1 ends with **29 approved parts**.
+**Numbers to treat as illustrative:** 376/220/128/90 for drawing 1; drawing 2 goes 491 fragments → 99 parts. After review, drawing 1 ends with **29 approved parts**. (Counting regions in the embedded overlay images gives ≈240 cells in the raw fragment pass and ≈197 / 136 / 98 regions at the three merge levels; the hierarchy is strict, every finer region sits wholly inside one coarser region.)
 
 ## 5. Review and pair (0:27–0:34)
 
@@ -105,16 +105,18 @@ new pieces from them.* Flow: **capture → split → merge → review → librar
 - the tile itself, centred, scaled to fit.
 - The last card is a **pending source**: `IMG_4056 · 99 parts · in review`.
 
-**Toolbar:** a segmented control **Original | Greyscale | Outline | Recolor** (render *modes* — views only: Greyscale is a desaturate filter on the colour tile, Outline is a line-art version, Recolor is the palette-remapped version) and a **search field**. Typing `wing` dims non-matching cards to 30% and gives matching cards (C1, C7, D1, D7) an accent border and visible `#wing` tag.
+**Toolbar:** a segmented control **Original | Greyscale | Outline | Recolor** (render *modes* — views only: Greyscale is a desaturate filter on the colour tile; Outline is a raster **ink layer**, near-black with alpha proportional to how dark the fill pixel is, registered exactly over the fill; Recolor is a **warm-colourway remap** of the same alpha mask) and a **search field**. Typing `wing` dims non-matching cards to 30% and gives matching cards (C1, C7, D1, D7) an accent border and visible `#wing` tag.
 
 **Storage statement:** *Each part is stored once as colour plus transparency, with a locked link back to its source drawing.*
 
 **Part naming scheme (read from tile positions and pairs):**
 - **Letter = horizontal band** of the drawing, top to bottom: A (y≈60–210), B (≈245–420), C (≈425–645), D (≈625–1065), E (≈975–1100).
 - **Number = position across the band, 1…7, symmetric around 4** (the axis). Pairs are `1↔7`, `2↔6`, `3↔5`; `4` sits on the axis. Reel pairs: A2↔A4, C1↔C7, C2↔C6, C3↔C5, D1↔D7, D3↔D5, E3↔E4.
-- **Suffix `L`/`R`** when a pair shares a number (B4L↔B4R, B5L↔B5R).
-- **Suffix `s`** = a smaller sub-part nested in/under the same slot (B3s, C4s, D4s, E0s).
-- `E0`/`E0s` are the tiny on-axis pieces at the very bottom.
+- **Suffix `L`/`R`** when a pair shares a number (B4L↔B4R, B5L↔B5R): small twin pieces that are true mirror images of each other. Whether L/R means the viewer's or the figure's left is not resolvable from the reel.
+- **Suffix `s`** = a **second on-axis piece stacked directly beneath the band's central piece** (B3 collar → B3s goblet under it; C4 collar → C4s goblet; D4 shield → D4s larger mask beneath, which is bigger than D4; E0 bow → E0s cap). Read it as "sub/stem", not "small".
+- Band E breaks the 1…7 rule: `E0` is the tiny axial bow at the very bottom and `E3`/`E4` are the flanking horns.
+- Indices have gaps (no A1, A5, D2, D6, E1, E2), so IDs behave like **stable identifiers**, not a dense sequence.
+- Parts are cut at the **merged-part level, not the raw-fragment level**: some tiles are single cells (C3, C5, D3, D4, D5, E0, B3s), others are merged groups (A3 is the whole crown, ≈27 cells; D1/D7 are whole hip complexes). Mirror twins are cut separately from each half of the drawing, so they are near-mirrors with hand-drawn differences, not one tile flipped.
 
 **Gloss:** *Render modes are views, like changing the lighting on a sculpture. Greyscale, outline and recolor never alter the stored tile.*
 
@@ -161,7 +163,9 @@ Source        { id (filename), original photo, figure box, working copy (720 px 
                 counts: fragments, parts at cut, approved }
 MergeTree     { per source: leaf fragments, merge order with edge-cost, current cut }
 Part / Tile   { id (band letter + position + suffix), source id (locked), bbox on working copy,
-                RGBA tile (colour + alpha), outline variant, area px,
+                RGBA tile (colour + alpha, feathered edge, ink contour kept),
+                outline variant (raster ink layer, same alpha canvas),
+                recolour variant (same alpha, remapped colours), area px,
                 mate id | null ("on axis"), mirror IoU, tags [] }
 Pair          { a, b, iou }  — twin relationship across the axis
 Library       { parts[], sources[] }  — search by id / tag, render mode is a view flag
@@ -181,7 +185,25 @@ Export        { target: Procreate, format: layered PSD, one layer per placed par
 
 ---
 
-## 11. Comparison checklist (fill in against the codebase)
+## 11. What the embedded images show (visual taxonomy)
+
+Read from the 99 decoded images; it confirms the pipeline above and fixes a few details.
+
+**The artworks.** Both are hand-drawn, bilaterally symmetric "totems" of interlocking bone-like biomorphic forms (pelvis, vertebra, scapula, goblet and claw shapes), outlined in heavy black ink and filled with coloured pencil/marker in a strictly cool palette: cobalt and steel blue, teal, pale mint green with hatching, warm silver-grey. They are phone photos (uneven lighting, faint pencil grid). Every colour cell is enclosed by a closed ink contour, which is exactly why ink-as-walls watershed works. Left/right correlation measured on the images: 0.77 (drawing 1), 0.69 (drawing 2).
+
+**Band roles in drawing 1** (what the letters mean on this piece): A = crown, B = upper torso and collar, C = middle band of paired limbs, D = lower band / wing-like hips, E = the small bow/knot at the bottom.
+
+**Pipeline layers as they appear on screen:**
+- *Fragment pass* (`frag`): amber contour lines (~2–3 px) on full transparency, outer silhouette plus every cell edge, including slivers and specks typical of raw OpenCV output.
+- *Merge levels* (`L1`, `L2`, `L3`): pastel random-colour label maps at ~47% fill alpha with lighter boundary lines, designed to composite over the dimmed photo; strict hierarchy between levels.
+- *Selection* (`selA`, `selB`): one region filled solid with a soft ~12 px glow halo; cyan for the tapped part, orange for its mirror twin.
+- *Cut-outs* (`cutA`, `cutB`): RGB pixel-identical to the photo, alpha from the segmentation mask with a slightly feathered edge, ink outline included. These two reappear in the library as C3 and C5.
+
+**Tile variants (`t_`, `t_…_ol`, `r_`)** share one canvas per ID. `t_` is the colour fill with true transparency and the pencil grain kept. `_ol` is the ink layer (near-black, alpha tracks pixel darkness, interiors transparent). `r_` is a recolour, **not a mirror**: identical alpha, colours remapped cool → warm (blues → brick red/maroon, teal → red-orange, mint → ochre, grey → warm grey), roughly a hue reflection rather than a uniform rotation. Tile pixel size is a layout choice (cut at ~0.7× of the 720 px working copy), not a property of the part.
+
+**What it says about behaviour:** parts are indexed around the axis (twin for most slots, one axial piece per band, stacked `s` pieces along the axis), which is what lets the composer snap and mirror placements along a spine. Transforms in the reel are applied at render time, never baked into tiles. All confirmed tiles come from drawing 1; drawing 2 contributes only its fragment and level overlays, consistent with its "waiting for your review" status.
+
+## 12. Comparison checklist (fill in against the codebase)
 
 | # | Reel behavior | Codebase today | Verdict (keep / adopt / adapt) |
 |---|---------------|----------------|--------------------------------|
@@ -201,7 +223,7 @@ Export        { target: Procreate, format: layered PSD, one layer per placed par
 | 5.3 | Tray assigns IDs (`C3`, `C5 · mirror`) and shows cut-outs | | |
 | 6.1 | Sources list with per-source status (splitting / in review / in library) | | |
 | 6.2 | Library cards: ID, locked source, ↔ pair or "on axis", tags | | |
-| 6.3 | Render modes Original / Greyscale / Outline / Recolor as views | | |
+| 6.3 | Render modes Original / Greyscale / Outline / Recolor as views (ink layer + recolour share the tile's alpha) | | |
 | 6.4 | Search by id/tag with dim-and-highlight | | |
 | 6.5 | Band-letter + symmetric-number + L/R/s naming scheme | | |
 | 6.6 | Tiles fly from map position to grid (shows provenance) | | |
@@ -214,7 +236,7 @@ Export        { target: Procreate, format: layered PSD, one layer per placed par
 | 8.3 | Exploded 3D layer preview | | |
 | P1–P6 | Cross-cutting principles above | | |
 
-## 12. Things the reel leaves open (decide with the user)
+## 13. Things the reel leaves open (decide with the user)
 
 - Only a **vertical** axis is searched; no rotation correction before the search.
 - What "approved" means between the 90-part cut and the 29 parts in the library (reject noise/paper? merge further by hand?).
@@ -223,3 +245,5 @@ Export        { target: Procreate, format: layered PSD, one layer per placed par
 - Whether "assisted" (vs. fully manual) is the only compose mode.
 - Export: PSD is shown; native `.procreate` or PNG-per-layer are not mentioned.
 - The reel's numbers (376/220/128/90, IoU 0.75, r 0.78) come from a quick OpenCV run and are illustrative.
+- Whether `L`/`R` in part IDs means the viewer's left/right or the figure's.
+- Whether the Outline mode should stay a raster ink layer (as in the reel) or become a vector trace.
