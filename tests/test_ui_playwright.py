@@ -225,3 +225,27 @@ def test_dark_theme_and_tablet_width(server, browser, shots_dir):
         page.screenshot(path=str(shots_dir / "08-tablet-dark.png"))
     finally:
         ctx.close()
+
+
+def test_tap_recovers_after_a_press_released_off_the_canvas(server, browser, shots_dir):
+    """A mouse press that ends outside the canvas (mouse and pen have no implicit capture) must not swallow
+    every later tap."""
+    ui = Page(browser, server.url, shots_dir)
+    try:
+        page = ui.page
+        box = page.locator("#stage").bounding_box()
+        cx, cy = centre(1)
+        x, y = box["x"] + cx / W * box["width"], box["y"] + cy / H * box["height"]
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(box["x"] + 10, max(1.0, box["y"] - 30), steps=5)   # drag out of the stage, into the header
+        page.mouse.up()
+        assert ui.attr("data-selected") == []
+        ui.tap(cx, cy)
+        page.wait_for_function("document.querySelector('#stage').dataset.selected === '1'")
+        assert ui.attr("data-selected") == [1] and ui.attr("data-twins") == [3]
+        page.mouse.click(x, y)                      # a plain mouse click still toggles
+        page.wait_for_function("document.querySelector('#stage').dataset.selected === ''")
+        assert not ui.errors, ui.errors
+    finally:
+        ui.close()

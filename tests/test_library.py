@@ -301,3 +301,50 @@ def test_render_modes_never_touch_the_stored_png(lib, lib_dir, session):
         assert sha256(lib.tile_png_bytes(rec.id)) == before
     assert {p.name for p in (lib_dir / "tiles").iterdir()} == {f"{rec.id}.png"}   # no derived assets on disk
     assert lib.get(rec.id) == rec
+
+
+def test_delete_inside_a_rolled_back_transaction_keeps_the_png(synthetic_dir, tmp_path):
+    from biomorphic.library.db import Library
+    from biomorphic.session import Session
+    s = Session.load(synthetic_dir)
+    lib = Library.open(tmp_path / "lib")
+    rec = lib.save_tile(s, 0, 2)
+    path = lib.tile_path(rec.id)
+    assert path.exists()
+    with pytest.raises(RuntimeError):
+        with lib.transaction():
+            lib.delete_tile(rec.id)
+            raise RuntimeError("abort")
+    assert lib.get(rec.id) is not None and path.exists()
+    assert lib.tile_png_bytes(rec.id)
+    lib.delete_tile(rec.id)
+    assert lib.get(rec.id) is None and not path.exists()
+
+
+def test_provenance_records_the_deskew_angle(synthetic_dir, tmp_path):
+    import json
+    from biomorphic.library.db import Library
+    from biomorphic.session import Session
+    meta_path = synthetic_dir / "session.json"
+    meta = json.loads(meta_path.read_text())
+    meta["working"]["angle_deg"] = 1.5
+    meta["axis"]["angle_deg"] = 0.0
+    meta_path.write_text(json.dumps(meta))
+    s = Session.load(synthetic_dir)
+    lib = Library.open(tmp_path / "lib")
+    rec = lib.save_tile(s, 0, 1)
+    assert rec.provenance["working_angle_deg"] == pytest.approx(1.5)
+    assert rec.provenance["axis_angle_deg"] == pytest.approx(0.0)
+    # a library created without the column is upgraded on open
+    import sqlite3
+    old = tmp_path / "old"
+    old.mkdir()
+    from biomorphic.library.db import PROVENANCE_COLUMNS
+    conn = sqlite3.connect(old / "library.sqlite")
+    cols = ", ".join(f"{c} TEXT" for c in PROVENANCE_COLUMNS if c != "working_angle_deg")
+    conn.executescript(f"CREATE TABLE provenance (tile_id TEXT PRIMARY KEY, {cols});")
+    conn.commit()
+    conn.close()
+    lib2 = Library.open(old)
+    cols = {r[1] for r in lib2.conn.execute("PRAGMA table_info(provenance)")}
+    assert "working_angle_deg" in cols

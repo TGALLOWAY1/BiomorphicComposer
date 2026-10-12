@@ -269,3 +269,24 @@ def test_degrades_without_a_library(server):
         assert get_json(server, "/api/levels/0/regions")["1"]["saved_tile_id"] is None
     finally:
         state.library, state.library_error = saved_lib, saved_err
+
+
+def test_post_to_an_unknown_route_does_not_desync_a_kept_alive_connection(server):
+    """The body of a POST that gets a 404/405 must be drained, or it is parsed as the next request."""
+    import http.client
+    host, port = server.server_address[:2]
+    conn = http.client.HTTPConnection(host, port, timeout=10)
+    body = json.dumps({"level": 0, "region_ids": [1]})
+    conn.request("POST", "/api/session", body=body, headers={"Content-Type": "application/json"})
+    r = conn.getresponse()
+    assert r.status == 405
+    r.read()
+    conn.request("POST", "/api/nowhere", body=body, headers={"Content-Type": "application/json"})
+    r = conn.getresponse()
+    assert r.status == 404
+    r.read()
+    conn.request("GET", "/api/session")
+    r = conn.getresponse()
+    assert r.status == 200
+    assert "meta" in json.loads(r.read())
+    conn.close()

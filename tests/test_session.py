@@ -70,3 +70,23 @@ def test_cut_tile_roundtrip(synthetic_dir):
     data = encode_png(rgba)
     assert np.array_equal(decode_png(data), rgba)
     assert sha256(data) == sha256(encode_png(rgba))
+
+
+def test_add_group_absorbs_overlapping_groups(synthetic_dir):
+    """Merging a region that is already a manual group with another region yields one group, not a stack of
+    groups that each need their own Unmerge."""
+    s = Session.load(synthetic_dir)
+    g0 = s.add_group([1, 2])
+    assert s.groups == [[1, 2]]
+    rid = GROUP_ID_BASE + g0
+    leaves = s.region_leaves(0, rid) + s.region_leaves(0, 5)
+    g1 = s.add_group(leaves)
+    assert s.groups == [[1, 2, 5]] and g1 == 0
+    assert set(np.unique(s.label_map(0)).tolist()) == {0, 3, 4, GROUP_ID_BASE}
+    s.remove_group(0)
+    assert s.groups == [] and set(np.unique(s.label_map(0)).tolist()) == {0, 1, 2, 3, 4, 5}
+    # unrelated groups are kept, and keep their order
+    s.add_group([3])
+    s.add_group([1, 2])
+    s.add_group([2, 5])
+    assert s.groups == [[3], [1, 2, 5]]

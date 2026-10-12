@@ -433,6 +433,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         path = unquote(parts.path)
         query = parse_qs(parts.query)
+        # read the whole body up front: a 404/405 answered with the body still unread would leave those bytes
+        # to be parsed as the next request on a kept-alive connection
+        length = int(self.headers.get("Content-Length") or 0)
+        self._raw_body = self.rfile.read(length) if length > 0 else b""
         try:
             for route_method, pattern, handler in ROUTES:
                 m = pattern.match(path)
@@ -452,8 +456,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(length) if length else b""
+        raw = getattr(self, "_raw_body", b"")
         if not raw:
             return {}
         try:

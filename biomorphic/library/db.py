@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS provenance (
     bbox_x INT, bbox_y INT, bbox_w INT, bbox_h INT,           -- working px
     crop_x INT, crop_y INT, crop_w INT, crop_h INT,           -- oriented-source px
     working_scale REAL, working_w INT, working_h INT,
+    working_angle_deg REAL,                                   -- rotation applied to deskew the working copy
     user_merged INT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS tags (
     tile_id TEXT REFERENCES tiles(id) ON DELETE CASCADE, tag TEXT, created_at TEXT,
@@ -65,7 +66,7 @@ TILE_COLUMNS = ("id", "created_at", "png_path", "png_sha256", "width", "height",
 PROVENANCE_COLUMNS = ("source_sha256", "source_filename", "session_id", "pipeline_version",
                       "axis_x", "axis_angle_deg", "level_index", "n_merges", "region_id", "fragment_ids",
                       "bbox_x", "bbox_y", "bbox_w", "bbox_h", "crop_x", "crop_y", "crop_w", "crop_h",
-                      "working_scale", "working_w", "working_h", "user_merged", "created_at")
+                      "working_scale", "working_w", "working_h", "working_angle_deg", "user_merged", "created_at")
 
 _SELECT_TILES = ("SELECT " + ", ".join(f"t.{c}" for c in TILE_COLUMNS) + ", "
                  + ", ".join(f"p.{c} AS p_{c}" for c in PROVENANCE_COLUMNS)
@@ -156,6 +157,7 @@ class Library:
         self.conn = conn
         self._lock = threading.RLock()
         self._written_stack: list[list[Path]] = []    # PNGs written per open transaction level (undone on rollback)
+        self._unlink_stack: list[list[Path]] = []     # PNGs to remove, applied only when the outermost unit commits
 
     # ---- lifecycle ----------------------------------------------------------------------
     @classmethod
@@ -170,6 +172,10 @@ class Library:
         conn.execute("PRAGMA journal_mode = WAL").fetchall()
         conn.execute("PRAGMA busy_timeout = 5000")
         conn.executescript(SCHEMA_SQL)
+        # libraries created before a column was added: ALTER TABLE is not an UPDATE, so the trigger allows it
+        have = {row[1] for row in conn.execute("PRAGMA table_info(provenance)")}
+        if "working_angle_deg" not in have:
+            conn.execute("ALTER TABLE provenance ADD COLUMN working_angle_deg REAL")
         version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if version == 0:
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -204,10 +210,12 @@ class Library:
             else:
                 self.conn.execute(f"SAVEPOINT lib_sp_{depth}")
             self._written_stack.append([])
+            self._unlink_stack.append([])
             try:
                 yield
             except BaseException:
                 written = self._written_stack.pop()
+                self._unlink_stack.pop()          # the rows come back, so their files must stay
                 if depth == 0:
                     self.conn.execute("ROLLBACK")
                 else:
@@ -218,11 +226,15 @@ class Library:
                 raise
             else:
                 written = self._written_stack.pop()
+                pending = self._unlink_stack.pop()
                 if depth == 0:
                     self.conn.execute("COMMIT")
+                    for p in pending:
+                        p.unlink(missing_ok=True)
                 else:
                     self.conn.execute(f"RELEASE lib_sp_{depth}")
                     self._written_stack[-1].extend(written)
+                    self._unlink_stack[-1].extend(pending)
 
     # ---- ids ----------------------------------------------------------------------------
     @staticmethod
@@ -319,8 +331,8 @@ class Library:
             png_path = self.dir / row[0] if row[0] else None
             self.conn.execute("UPDATE tiles SET pair_tile_id = NULL, pair_iou = NULL WHERE pair_tile_id = ?", (tile_id,))
             self.conn.execute("DELETE FROM tiles WHERE id = ?", (tile_id,))
-        if png_path is not None:
-            png_path.unlink(missing_ok=True)
+            if png_path is not None:
+                self._unlink_stack[-1].append(png_path)   # removed when the outermost unit commits, never on rollback
 
     # ---- reads --------------------------------------------------------------------------
     def get(self, tile_id: str) -> TileRecord | None:
@@ -444,6 +456,7 @@ class Library:
              int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]),
              crop.get("x"), crop.get("y"), crop.get("w"), crop.get("h"),
              working.get("scale"), working.get("width"), working.get("height"),
+             float(working.get("angle_deg", 0.0) or 0.0),
              1 if region_id >= GROUP_ID_BASE else 0, now))
 
         path = self.dir / rel_path

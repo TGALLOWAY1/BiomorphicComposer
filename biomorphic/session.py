@@ -314,13 +314,22 @@ class Session:
 
     # ---- manual groups ------------------------------------------------------------------
     def add_group(self, leaf_ids: list[int]) -> int:
-        leaves = sorted({int(i) for i in leaf_ids if 0 < int(i) <= self.tree.n_leaves})
+        """Record a manual merge. Groups that overlap the new one are absorbed into it, so each connected set of
+        manual merges is exactly one group and one Unmerge undoes it."""
+        leaves = {int(i) for i in leaf_ids if 0 < int(i) <= self.tree.n_leaves}
         if len(leaves) < 1:
             raise ValueError("a group needs at least one leaf")
-        self.state["groups"].append(leaves)
+        kept: list[list[int]] = []
+        for g in self.state["groups"]:
+            if leaves.intersection(g):
+                leaves.update(int(i) for i in g)
+            else:
+                kept.append(list(g))
+        kept.append(sorted(leaves))
+        self.state["groups"] = kept
         self._levels_cache = {k: v for k, v in self._levels_cache.items() if k[1] == ()}
         self.save_state()
-        return len(self.state["groups"]) - 1
+        return len(kept) - 1
 
     def remove_group(self, group_index: int) -> None:
         del self.state["groups"][group_index]

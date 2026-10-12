@@ -156,6 +156,7 @@ CREATE TABLE provenance(tile_id TEXT PRIMARY KEY REFERENCES tiles(id) ON DELETE 
                         bbox_x INT, bbox_y INT, bbox_w INT, bbox_h INT,           -- working px
                         crop_x INT, crop_y INT, crop_w INT, crop_h INT,           -- oriented-source px
                         working_scale REAL, working_w INT, working_h INT,
+                        working_angle_deg REAL,            -- rotation applied to deskew the working copy
                         user_merged INT, created_at TEXT);
 CREATE TABLE tags      (tile_id TEXT REFERENCES tiles(id) ON DELETE CASCADE, tag TEXT, created_at TEXT, PRIMARY KEY (tile_id, tag));
 CREATE TRIGGER provenance_immutable BEFORE UPDATE ON provenance BEGIN SELECT RAISE(ABORT, 'provenance is immutable'); END;

@@ -343,7 +343,8 @@ function paintHighlights() {
   const r = Math.max(1, Math.round(S.dpr * 0.75));
   let x0 = w, y0 = h, x1 = 0, y1 = 0;
   for (const id of [...S.selected, ...S.twins]) {
-    const b = S.regions.get(id).bbox;
+    const reg = S.regions.get(id); if (!reg) continue;   // ids of the next level while a reload is in flight
+    const b = reg.bbox;
     x0 = Math.min(x0, Math.floor(b[0] * w / W) - r - 2); y0 = Math.min(y0, Math.floor(b[1] * h / H) - r - 2);
     x1 = Math.max(x1, Math.ceil((b[0] + b[2]) * w / W) + r + 2); y1 = Math.max(y1, Math.ceil((b[1] + b[3]) * h / H) + r + 2);
   }
@@ -396,7 +397,7 @@ function drawVectors() {
   // dashed link between a selected part and its twin
   sctx.setLineDash([4 * dpr, 4 * dpr]); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#d98d12';
   for (const s of S.selected) {
-    const t = twinOf(s); if (t == null || !S.regions.has(t)) continue;
+    const t = twinOf(s); if (t == null || !S.regions.has(s) || !S.regions.has(t)) continue;
     const a = S.regions.get(s).centroid, b = S.regions.get(t).centroid;
     sctx.beginPath(); sctx.moveTo(a[0] * sx, a[1] * sy); sctx.lineTo(b[0] * sx, b[1] * sy); sctx.stroke();
   }
@@ -490,19 +491,25 @@ async function showTile(id) {                                   // tapping a sav
 }
 
 // ---------------------------------------------------------------- events
-let down = null, pointers = 0;
+// active pointer ids rather than a counter: a mouse or pen press that ends off the canvas never sends the
+// canvas a pointerup, and a counter would stay stuck at 1 and swallow every later tap
+const active = new Set();
+let down = null;
+const release = (e) => { active.delete(e.pointerId); if (down && e.pointerId === down.id) down = null; };
 stage.addEventListener('pointerdown', (e) => {
-  pointers++;
-  down = pointers === 1 ? { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId } : null;   // two fingers = pinch, not a tap
+  active.add(e.pointerId);
+  down = active.size === 1 ? { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId } : null;   // two fingers = pinch, not a tap
 });
 stage.addEventListener('pointerup', (e) => {
-  pointers = Math.max(0, pointers - 1);
+  active.delete(e.pointerId);
   if (!down || e.pointerId !== down.id) return;
   const d = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = Date.now() - down.t;
   down = null;
   if (d < 12 && dt < 700 && !S.busy) toggleRegion(regionAt(e.clientX, e.clientY));
 });
-stage.addEventListener('pointercancel', () => { pointers = 0; down = null; });
+stage.addEventListener('pointercancel', release);
+stage.addEventListener('pointerleave', release);
+window.addEventListener('pointerup', release);
 stage.addEventListener('contextmenu', (e) => e.preventDefault());
 slider.addEventListener('input', () => requestLevel(Number(slider.value), false));
 slider.addEventListener('change', () => requestLevel(Number(slider.value), true));
