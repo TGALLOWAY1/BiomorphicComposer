@@ -23,7 +23,9 @@ DEFAULTS = {
     "working_width": 1800,         # max width of the working copy (px); the source is never upscaled
     "crop_margin_frac": 0.03,      # crop margin around the figure box, as a fraction of max(box w, box h)
     "paper_border_frac": 0.05,     # width of the image border band (fraction of w/h) used to estimate the paper
-    "figure_dark_dL": 25.0,        # a pixel darker than the paper by this much (Lab L) belongs to the figure
+    "figure_dark_dL": 35.0,        # a pixel darker than the paper by this much (Lab L) belongs to the figure;
+                                   # 25 let a shadowed pencil grid on the board join the figure (fill-holes then
+                                   # turned the enclosed wood squares into figure); the ink outline is ~70 darker
     "figure_chroma_delta": 12.0,   # ... or whose (a, b) is further than this from the paper's (a, b)
     "figure_close_px": 2,          # closing radius (px) applied before taking the largest component
     "figure_box_width": 1000,      # the oriented source is reduced to this width to find the figure box

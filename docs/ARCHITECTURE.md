@@ -36,7 +36,10 @@ biomorphic/
     axis.py             vertical mirror axis search (+ optional small deskew angle), score, mirrored-mask IoU
     oversegment.py      cells (ink-free connected areas) as markers, watershed to the ink centre line, speck floor
     merge.py            region adjacency graph + full hierarchical merge tree, cost dominated by ink on the border
-    pairing.py          sides (L / R / axis) and mirror twins at a level: reflect + local registration + Lab check
+    pairing.py          sides (L / R / axis) and mirror twins at a level: fold overlap + small residual shift + colour,
+                        optimal one-to-one assignment (fold method); the reflect + register method without a fold
+    fold.py             the fold: reflection about the axis, affine alignment (ECC) and a smooth residual field
+    complete.py         recover faint lines where the fold shows a stitched cell
     debug.py            optional debug images for development
   library/
     db.py               SQLite schema, Library API, provenance immutability (trigger + no API path)
@@ -73,6 +76,8 @@ All coordinates are in **working-copy pixel space** unless stated otherwise.
   merge_tree.json    {"n_leaves": N, "merges": [[a, b, cost, new_id], ...]}
   state.json         UI working state, optional: {"groups": [[leaf_id, ...], ...]}
   pairs_L<i>.json    pairing cache per level, optional, written by Session
+  fold.npz           the fold: axis_x, affine (2x3), residual field (1/8 resolution), band half-width; sessions
+                     written before the fold step have none and pair with the reflect + register method
   debug/             optional, anything the pipeline wants to dump for humans
 ```
 
@@ -83,7 +88,7 @@ All coordinates are in **working-copy pixel space** unless stated otherwise.
 ```json
 {
   "schema": 1,
-  "pipeline_version": "0.1.0",
+  "pipeline_version": "0.2.0",
   "session_id": "3fa9c1b2",                       // first 8 hex of sha256(source.sha256 + pipeline_version + created_at)
   "created_at": "2026-10-12T10:00:00Z",
   "source": {"path": "samples/IMG_2295.jpeg", "filename": "IMG_2295.jpeg", "sha256": "...",
@@ -128,14 +133,39 @@ tiles.encode_png(rgba) -> bytes ; tiles.decode_png(bytes) -> rgba ; tiles.sha256
 
 ## Pipeline (`biomorphic/pipeline`)
 
-Order: ingest → ink → axis → oversegment → merge → write session. Each step is a pure function on arrays that returns arrays/dicts; `run.py` wires them and writes files. Every threshold is a named parameter with a default and lands in `session.json["params"]`.
+Order: ingest → ink (+ gap bridges) → axis → fold → oversegment → complete faint lines → oversegment again (when
+lines were added) → leaf pairing → mirror-consistent merge → write session. Each step is a pure function on arrays that returns arrays/dicts; `run.py` wires them and writes files. Every threshold is a named parameter with a default and lands in `session.json["params"]`.
 
 - **ingest**: orient by EXIF; estimate paper from the image border; figure = largest connected component of (dark OR chroma-above-paper) after closing, holes filled; crop with margin; downscale so width ≤ `working_width` (default 1800, never upscale); optional deskew by the axis angle (only if |angle| > 0.3°).
 - **ink**: ink = dark AND colourless in Lab relative to the paper (navy pencil has chroma; ink does not). Remove specks, close 1-px gaps. Report the median ink half-thickness (`t0`) for cost normalisation.
 - **axis**: candidate vertical axes x in the middle ~60% of the figure box (and small angles, e.g. −3…3° in 0.5° steps) scored by the IoU of the figure mask with its reflection (and/or correlation of the ink mask). Returns x, angle, score, mirrored-mask IoU.
 - **oversegment**: markers = connected components of (figure AND NOT ink) with area ≥ speck floor; elevation = distance-to-non-ink inside ink (ridge on the centre line); `skimage.segmentation.watershed(elevation, markers, mask=figure)`; every figure pixel gets a label (assign stragglers to the nearest region). Result: `fragments`, N leaves. Optionally extra seeds inside large cells (off by default).
+- **ink** also: a dark pixel is colourless when its chroma is below `ink_rel_chroma_frac` of the most colourful fill
+  nearby (colour bleeds into thin black strokes in a phone photo); ink must be thin (black-hat contrast above
+  `ink_thin_contrast`) unless truly black, with the small holes that test opens refilled; dark areas far wider than a
+  stroke are fills (`ink_fill_width_t0`), hollowed out with a stroke-wide rim kept as their wall; **bridge_gaps** closes
+  short gaps where a line stops and continues (from each true line end, a straight bridge ahead over dark pixels),
+  keeping only bridges that split a cell into real components (no scraps, no slivers).
+- **fold**: every point's twin = reflection about the axis, then an affine map (ECC on blurred ink, left half) and a
+  smooth residual displacement field (DIS optical flow on L, Gaussian-smoothed at ~1.4 % of the figure width, clipped).
+  That map serves the left of the local centre line; the right uses its exact inverse (fixed-point iteration), so the
+  twin of a twin is the point itself and a vertical offset between the halves is undone from either side.
+  The local centre line is where a point is its own twin; the centre band is that curve ± `fold_band_frac` of the width.
+- **complete**: a cell lying on two or more cells of the other half (folded) gets the faint dark pixels under the
+  folded dividing line added to the ink, kept only when each resulting piece lies on its own counterpart cell.
+- **merge** (mirror-consistent, `merge_symmetric`): units are twin pairs (from the leaf pairing), central regions and
+  unpaired regions; two pairs merge only when both sides are adjacent (two merges, one cost), a central region takes a
+  pair only when it touches both twins, an unpaired region joins a neighbour; merges completing a unit are flagged
+  `unit_end` and levels are cut only there, so every level stays mirror-consistent. Regions left when no symmetric
+  merge remains join by the ordinary cost order (`fallback` in the stats, `fallback_merges` in the counts); only the
+  last of those merges is a unit end, so no level is cut with one twin merged and the other not.
 - **merge**: region adjacency graph with per-edge `border_len`, `ink_sum` (sum of ink half-thickness along the border), per-region area/perimeter/bbox/centroid/side. Cost is **dominated by ink on the shared border**: `ink_norm = (ink_sum / border_len) / t0`, then small modifiers for how embedded the smaller region is (`border_len / min(perimeter)`), size, and an **axis penalty** for merging regions on opposite sides. Agglomerate with a heap (lazy invalidation) until one region, recording every merge → `merge_tree.json`. Choose levels.
-- **pairing** (per level): side = `axis` if the region's own mirrored self-IoU > 0.5, else by centroid. For each L region, candidates on R with overlapping mirrored bbox; score = IoU after reflecting about the axis plus **local registration** (translation search, optionally ±10 % scale); reject if mean Lab ΔE between the two regions is above a threshold; one-to-one assignment. Returns sides, pairs, twin map.
+- **pairing** (per level, with a fold): the other half is folded on top, so every region is compared with the regions
+  its pixels' twins fall in; IoU of the region with the folded twin after a residual shift of at most `fold_shift_px`,
+  times colour factors on the mean-Lab distance and the per-pixel colour difference over the overlap; Hungarian
+  assignment; side = `axis` when the region folds onto itself (self-IoU ≥ 0.5) and touches the centre band, else by
+  centroid against the local centre line.
+- **pairing** (per level, without a fold): side = `axis` if the region's own mirrored self-IoU > 0.5, else by centroid. For each L region, candidates on R with overlapping mirrored bbox; score = IoU after reflecting about the axis plus **local registration** (translation search, optionally ±10 % scale); reject if mean Lab ΔE between the two regions is above a threshold; one-to-one assignment. Returns sides, pairs, twin map.
 
 ## Library (`biomorphic/library`)
 

@@ -9,6 +9,13 @@ translation in the window is scored at once. Candidates with a registered IoU be
 mean-Lab distance above pair_max_delta_e are rejected; the rest are assigned one-to-one, best first.
 
 Reported dx, dy are the shift (working px) of the reflected L mask that best overlays the R mask.
+
+pair_regions_fold is the method used when the session has a fold (pipeline/fold.py): the other half is laid on
+top of this one, so every region is compared directly with the regions its pixels' twins belong to. Shape
+score = IoU of the region with the folded twin after a small residual shift; colour = distance between the
+mean Lab colours, plus the per-pixel colour difference over the overlap (the colour pattern); assignment is
+one-to-one and globally optimal (Hungarian) rather than greedy. A region is central when it folds onto itself
+and lies on the centre band.
 """
 from __future__ import annotations
 
@@ -29,6 +36,10 @@ DEFAULTS = {
     "pair_area_ratio_max": 3.0,  # candidates must have areas within this ratio
     "pair_max_candidates": 5,    # registrations per L region (best rigid overlaps / nearest first)
     "pair_fft_max_side": 320,    # registration frames larger than this are searched at reduced scale, then refined
+    "fold_shift_px": 10,         # fold pairing: residual shift searched around the fold (working px)
+    "fold_candidates": 4,        # fold pairing: twins scored per region (largest folded overlaps first)
+    "fold_colour_sigma": 18.0,   # fold pairing: colour factor exp(-(dE / sigma)^2) on the mean-Lab distance
+    "fold_pattern_sigma": 30.0,  # fold pairing: same on the mean per-pixel colour difference over the overlap
 }
 
 
@@ -239,3 +250,134 @@ def pair_regions(label_map: np.ndarray, axis_x: float, lab_image: np.ndarray, re
         twin[pr["a"]] = pr["b"]
         twin[pr["b"]] = pr["a"]
     return {"sides": sides, "pairs": pairs, "twin": twin}
+
+
+# ----------------------------------------------------------------------------- fold pairing
+def fold_overlaps(label_map: np.ndarray, mirror_map: np.ndarray, weights: np.ndarray | None = None
+                  ) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], float], dict[int, int]]:
+    """For every (r, s): pixels of region r whose twin lies in region s, the sum of `weights` over them, and
+    the folded area of every region s (pixels whose twin lies in s)."""
+    a = label_map.ravel().astype(np.int64)
+    b = mirror_map.ravel().astype(np.int64)
+    m = (a > 0) & (b > 0)
+    k = int(max(a.max(initial=0), b.max(initial=0))) + 1
+    key = a[m] * k + b[m]
+    uk, inv, cnt = np.unique(key, return_inverse=True, return_counts=True)
+    sums = np.bincount(inv, weights=weights.ravel()[m], minlength=len(uk)) if weights is not None else cnt
+    counts = {(int(q // k), int(q % k)): int(c) for q, c in zip(uk.tolist(), cnt.tolist())}
+    wsum = {(int(q // k), int(q % k)): float(s) for q, s in zip(uk.tolist(), np.asarray(sums).tolist())}
+    ids, mcnt = np.unique(b[b > 0], return_counts=True)
+    return counts, wsum, {int(i): int(c) for i, c in zip(ids.tolist(), mcnt.tolist())}
+
+
+def pair_regions_fold(label_map: np.ndarray, mirror_map: np.ndarray, lab_image: np.ndarray,
+                      lab_mirror: np.ndarray, regions: dict[int, Any], axis_x_at, band_half_width: float,
+                      params: dict | None = None) -> dict[str, Any]:
+    """Sides and twins of the regions of one level using the fold.
+
+    mirror_map[p] is the region of p's twin (Fold.mirror(label_map)); lab_mirror the Lab colour at p's twin;
+    axis_x_at(y) the local centre line. Returns the same structure as pair_regions, with extra per-pair fields
+    fold_iou (before the residual shift), delta_e (mean colours), pattern_de (per-pixel over the overlap), score.
+    """
+    from scipy.optimize import linear_sum_assignment
+
+    p = {**DEFAULTS, **(params or {})}
+    pix_de = np.linalg.norm(lab_image.astype(np.float32) - lab_mirror.astype(np.float32), axis=-1)
+    counts, de_sum, marea = fold_overlaps(label_map, mirror_map, pix_de)
+    area = {rid: int(info.area) for rid, info in regions.items()}
+
+    # sides: central = folds onto itself and touches the centre band; else by centroid against the local line
+    sides: dict[int, str] = {}
+    self_iou: dict[int, float] = {}
+    for rid, info in regions.items():
+        o = counts.get((rid, rid), 0)
+        self_iou[rid] = o / max(1, area[rid] + marea.get(rid, 0) - o)
+        cx, cy = info.centroid
+        ax_here = float(axis_x_at(cy))
+        x0, _y0, bw, _bh = info.bbox
+        touches_band = x0 <= ax_here + band_half_width and x0 + bw >= ax_here - band_half_width
+        if self_iou[rid] >= float(p["axis_self_iou"]) and touches_band:
+            sides[rid] = "axis"
+        else:
+            sides[rid] = "L" if cx < ax_here else "R"
+
+    # candidates: L regions against the R regions their pixels' twins fall in (and vice versa)
+    by_left: dict[int, dict[int, int]] = {}
+    for (r, s), c in counts.items():
+        if r == s:
+            continue
+        if sides.get(r) == "L" and sides.get(s) == "R":
+            by_left.setdefault(r, {})[s] = by_left.get(r, {}).get(s, 0) + c
+        elif sides.get(r) == "R" and sides.get(s) == "L":
+            by_left.setdefault(s, {})[r] = by_left.get(s, {}).get(r, 0) + c
+    shift = int(p["fold_shift_px"])
+    h, w = label_map.shape
+    # bounding boxes of the folded regions, so the residual-shift window holds both shapes whole
+    from scipy import ndimage as ndi
+    mids = np.unique(mirror_map)
+    mids = mids[mids > 0]
+    dense = np.where(mirror_map > 0, np.searchsorted(mids, mirror_map) + 1, 0).astype(np.int32)
+    mbox = {int(v): sl for v, sl in zip(mids.tolist(), ndi.find_objects(dense, max_label=len(mids)))}
+    cands: list[tuple[float, int, int, dict]] = []
+    for a, opts in by_left.items():
+        ia = regions[a]
+        for b, _c in sorted(opts.items(), key=lambda kv: -kv[1])[: int(p["fold_candidates"])]:
+            ib = regions[b]
+            ratio = max(area[a], area[b]) / max(1, min(area[a], area[b]))
+            if ratio > float(p["pair_area_ratio_max"]):
+                continue
+            oab, oba = counts.get((a, b), 0), counts.get((b, a), 0)
+            union = (area[a] + marea.get(b, 0) - oab) + (area[b] + marea.get(a, 0) - oba)
+            fold_iou = (oab + oba) / max(1, union)
+            # residual shift: the folded twin against the region, in a window around the region
+            x0, y0, bw, bh = ia.bbox
+            x1, y1 = x0 + bw, y0 + bh
+            sl = mbox.get(b)
+            if sl is not None:
+                x0, x1 = min(x0, sl[1].start), max(x1, sl[1].stop)
+                y0, y1 = min(y0, sl[0].start), max(y1, sl[0].stop)
+            g = shift + 2
+            xa, ya = max(0, x0 - g), max(0, y0 - g)
+            xb, yb = min(w, x1 + g), min(h, y1 + g)
+            ma = label_map[ya:yb, xa:xb] == a
+            mb = mirror_map[ya:yb, xa:xb] == b
+            iou_s, dy, dx = register_masks(mb, ma, shift, int(p["pair_fft_max_side"]))
+            iou = max(iou_s, oab / max(1, area[a] + marea.get(b, 0) - oab))
+            if iou_s < iou:
+                dx = dy = 0
+            de = float(np.linalg.norm(np.asarray(ia.mean_lab) - np.asarray(ib.mean_lab)))
+            pat = (de_sum.get((a, b), 0.0) + de_sum.get((b, a), 0.0)) / max(1, oab + oba)
+            if iou < float(p["pair_min_iou"]) or de > float(p["pair_max_delta_e"]):
+                continue
+            score = iou * np.exp(-(de / float(p["fold_colour_sigma"])) ** 2) \
+                * np.exp(-(pat / float(p["fold_pattern_sigma"])) ** 2)
+            cands.append((float(score), a, b, {"iou": float(iou), "fold_iou": float(fold_iou), "dx": int(dx),
+                                               "dy": int(dy), "delta_e": de, "pattern_de": float(pat)}))
+    pairs = []
+    if cands:
+        lefts = sorted({c[1] for c in cands})
+        rights = sorted({c[2] for c in cands})
+        li = {r: i for i, r in enumerate(lefts)}
+        ri = {r: i for i, r in enumerate(rights)}
+        cost = np.full((len(lefts), len(rights)), 1e6)
+        info = {}
+        for score, a, b, d in cands:
+            cost[li[a], ri[b]] = -score
+            info[(a, b)] = (score, d)
+        rows, cols = linear_sum_assignment(cost)
+        for r_, c_ in zip(rows.tolist(), cols.tolist()):
+            if cost[r_, c_] >= 1e6:
+                continue
+            a, b = lefts[r_], rights[c_]
+            score, d = info[(a, b)]
+            pairs.append({"a": a, "b": b, "iou": round(d["iou"], 4), "fold_iou": round(d["fold_iou"], 4),
+                          "rigid_iou": round(d["fold_iou"], 4), "dx": float(d["dx"]), "dy": float(d["dy"]),
+                          "scale": 1.0, "delta_e": round(d["delta_e"], 2), "pattern_de": round(d["pattern_de"], 2),
+                          "score": round(score, 4)})
+    pairs.sort(key=lambda q: -q["score"])
+    twin = {}
+    for pr in pairs:
+        twin[pr["a"]] = pr["b"]
+        twin[pr["b"]] = pr["a"]
+    return {"sides": sides, "pairs": pairs, "twin": twin, "self_iou": {k: round(v, 4) for k, v in self_iou.items()},
+            "method": "fold"}
