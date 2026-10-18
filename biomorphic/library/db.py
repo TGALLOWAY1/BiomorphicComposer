@@ -492,7 +492,7 @@ class Library:
 
         rgba, bbox = session.cut_tile(level_index, region_id, apply_groups)
         info = session.regions(level_index, apply_groups)[region_id]
-        sides = session.pairing(level_index).get("sides", {})
+        sides = session.pairing(level_index, apply_groups).get("sides", {})   # the same partition the cut came from
         side = sides.get(region_id) or ("L" if info.centroid[0] < session.axis_x else "R")
         png = tile_utils.encode_png(rgba)
         png_sha = tile_utils.sha256(png)

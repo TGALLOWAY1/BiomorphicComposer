@@ -513,9 +513,8 @@ let down = null;
 // sampled between pointer events so a fast finger does not skip thin parts.
 let stroke = null;                                              // { id, x, y, painted } while a stroke is live
 const PAINT_START_PX = 8;                                       // movement that turns a press into a stroke
-function paintTo(x, y) {
+function paintTo(x, y, changed = false) {
   const steps = Math.max(1, Math.ceil(Math.hypot(x - stroke.x, y - stroke.y) / 3));
-  let changed = false;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     changed = selectRegion(regionAt(stroke.x + (x - stroke.x) * t, stroke.y + (y - stroke.y) * t)) || changed;
@@ -531,13 +530,15 @@ stage.addEventListener('pointerdown', (e) => {
 });
 stage.addEventListener('pointermove', (e) => {
   if (S.busy || !paintEl.checked || !down || e.pointerId !== down.id) return;
+  let began = false;
   if (!stroke) {
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < PAINT_START_PX) return;
     stroke = { id: e.pointerId, x: down.x, y: down.y, painted: false };
     try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture is a nicety */ }
     stage.dataset.painting = '1';
-  }
-  paintTo(e.clientX, e.clientY);
+    began = selectRegion(regionAt(down.x, down.y));   // the part the stroke began on, even when the first
+  }                                                   // samples are already past its edge
+  paintTo(e.clientX, e.clientY, began);
 });
 stage.addEventListener('pointerup', (e) => {
   active.delete(e.pointerId);

@@ -390,3 +390,14 @@ def test_composite_is_one_transaction_and_members_survive_its_deletion(lib, lib_
     assert lib.summary()["n_tiles"] == 3
     with pytest.raises(ValueError):
         lib.save_composite(session, 0, 3)                                   # not a group
+
+
+def test_composite_components_keep_their_own_side(lib, session):
+    """A component under a composite is cut from the group-free partition, and its side comes from the same
+    partition: the axis cell stays 'axis' although the composite covering it is not."""
+    gid = GROUP_ID_BASE + session.add_group([1, 5])
+    rec = lib.save_composite(session, 0, gid)
+    by_region = {m.provenance["region_id"]: m for m in lib.members(rec.id)}
+    assert by_region[5].side == "axis" and by_region[1].side == "L"
+    assert session.pairing(0, apply_groups=False)["sides"][5] == "axis"
+    assert 5 not in session.pairing(0)["sides"]                 # the composite hides it in the grouped partition

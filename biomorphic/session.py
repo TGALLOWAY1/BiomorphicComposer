@@ -353,26 +353,28 @@ class Session:
             self._lab_mirror = self.fold.mirror(self.working_lab)
         return self._lab_mirror
 
-    def mirror_map(self, level_index: int) -> np.ndarray:
+    def mirror_map(self, level_index: int, apply_groups: bool = True) -> np.ndarray:
         """Region of every pixel's twin at this level: the other half folded on top (requires a fold)."""
-        data = self._level_data(level_index)
+        data = self._level_data(level_index, apply_groups)
         if "mirror_map" not in data:
             data["mirror_map"] = self.fold.mirror(data["label_map"])
         return data["mirror_map"]
 
     # ---- pairing ------------------------------------------------------------------------
-    def pairing(self, level_index: int) -> dict[str, Any]:
-        data = self._level_data(level_index)
+    def pairing(self, level_index: int, apply_groups: bool = True) -> dict[str, Any]:
+        """Sides and twins of the regions at a level; apply_groups=False pairs the level's own partition
+        (the components under a composite keep their own side and twin)."""
+        data = self._level_data(level_index, apply_groups)
         if "pairing" not in data:
             from biomorphic.pipeline import pairing as pairing_mod
             if self.fold is not None:
                 data["pairing"] = pairing_mod.pair_regions_fold(
-                    data["label_map"], self.mirror_map(level_index), self.working_lab, self.lab_mirror,
-                    self.regions(level_index), self.axis_x_at, self.fold.band_half_width,
-                    params=self.meta.get("params", {}))
+                    data["label_map"], self.mirror_map(level_index, apply_groups), self.working_lab,
+                    self.lab_mirror, self.regions(level_index, apply_groups), self.axis_x_at,
+                    self.fold.band_half_width, params=self.meta.get("params", {}))
             else:
                 data["pairing"] = pairing_mod.pair_regions(
-                    data["label_map"], self.axis_x, self.working_lab, self.regions(level_index),
+                    data["label_map"], self.axis_x, self.working_lab, self.regions(level_index, apply_groups),
                     params=self.meta.get("params", {}))
         return data["pairing"]
 
