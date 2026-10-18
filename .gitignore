@@ -10,3 +10,4 @@ dist/
 /verify_out/
 /library/
 .playwright/
+/grouping_out/

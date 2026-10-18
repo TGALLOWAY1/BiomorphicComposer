@@ -245,3 +245,11 @@ Stable ids and attributes for Playwright (`tests/test_ui_playwright.py`, `verify
 8. Provenance: API has no update path and the trigger aborts an UPDATE.
 
 Thresholds are starting points: when the drawing disagrees, the report says so with the number, rather than tuning to pass.
+
+### Grouping cost (`biomorphic/verify/grouping.py`)
+
+`biomorphic grouping <session> --map <map.png> [--labels] [--out grouping_out]` measures how many gestures the review UI, as built, needs to assemble each chunk of the artist's map: `grouping_report.md` / `.json` and `grouping_sheet.png`.
+
+- **Target**: each map piece is projected onto the working copy through the ground-truth shape matcher's transform, with one global scale (working px per map px, the median over confident matches) pinned so a large chunk cannot anchor on a small region of the same silhouette. The target is the set of leaves mostly under the projection, refined by re-fitting on their union (best-fitting iteration kept). Pieces are placed most confident first; a piece landing on leaves already taken is moved to their twins (level-0 pairing). A placement is *confident* when leaf IoU ≥ 0.7 and the area ratio is within 0.6–1.6; headline totals use confident placements only.
+- **Cost**: a region is *clean* when all its leaves lie in the target. Single-level cost = taps on clean regions + one Merge, at the cheapest level where every region touching the target is clean (level 0 always). The mixed plan taps the maximal clean regions coarse to fine, one Merge per visited level, counting level changes. Mirror twins co-select, so twin chunks (by the level-0 pairing) are counted once.
+- The sample's result lives in `docs/verification/grouping/`.

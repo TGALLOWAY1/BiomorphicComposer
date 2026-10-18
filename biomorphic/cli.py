@@ -132,9 +132,11 @@ def main(argv: list[str] | None = None) -> int:
         from biomorphic.verify.grouping import run_grouping
         result = run_grouping(args.session, args.map, args.out, labels_path=args.labels)
         s = result["summary"]
-        print(f"{s['one_region_pieces']}/{s['n_pieces']} chunks are one region at some level; "
-              f"single-level gestures {s['single_level']['gestures']} (median {s['single_level']['median_gestures']:g}), "
-              f"mixed {s['mixed']['gestures']}, with mirror co-select {s['mixed']['gestures_with_mirror_coselect']}")
+        c = s["confident"]
+        print(f"{c['n']}/{s['n_pieces']} placements confident; of those {c['one_region_pieces']} are one region at "
+              f"some level; single-level gestures {c['single_level']['gestures']} (median "
+              f"{c['single_level']['median_gestures'] or 0:g}), mixed {c['mixed']['gestures']}, with mirror "
+              f"co-select {c['mixed']['gestures_with_mirror_coselect']}; uncertain: {', '.join(s['uncertain']) or 'none'}")
         print(f"report written to {result['report_path']}")
         return 0
     if args.cmd == "pairs":

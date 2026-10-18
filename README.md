@@ -43,6 +43,9 @@ If Playwright cannot find a browser, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE` at a
 
 # verification on the sample: report.md, report.json, contact_sheet.png and ui/*.png in verify_out/
 .venv/bin/biomorphic verify samples/IMG_2295.jpeg --map samples/IMG_2298.png
+
+# grouping cost: how many taps / merges / slider moves each chunk of the artist's map costs in the review UI
+.venv/bin/biomorphic grouping work/IMG_2295 --map samples/IMG_2298.png
 ```
 
 Debug helpers: `biomorphic sheet <session>` writes a contact sheet of a session; `biomorphic pairs <session> --level N` prints sides and twins; `biomorphic ingest --param KEY=VALUE` overrides any pipeline parameter (they are all listed in `session.json`).
