@@ -49,7 +49,7 @@ Debug helpers: `biomorphic sheet <session>` writes a contact sheet of a session;
 
 ## Review page
 
-One slider sets the granularity (it opens near 60 parts). Tap a part to select it; its twin is selected with it (cyan and orange). **Merge** joins the tapped parts into one, and with *mirror merges* on, their twins into another. **Save** writes every selected part to the library as a tile and links the pair. The tray shows what is saved; tapping a tray card jumps back to that part.
+One slider sets the granularity (it opens near 60 parts). Tap a part to select it; its twin is selected with it (cyan and orange). With **paint** on (the default) a drag across several parts selects them all in one stroke; tap a part to add or remove it. **Merge** joins the selected parts into one composite, and with *mirror merges* on, makes its mirror composite too (the parts under the composite folded across the axis). A composite is pinned: it stays exactly the parts you grouped at every slider position. **Save** writes every selected part to the library as a tile, a composite together with its component tiles, and links the pair. The tray shows what is saved; tapping a tray card jumps back to that part.
 
 ## Layout
 

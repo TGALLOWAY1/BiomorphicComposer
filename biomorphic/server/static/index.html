@@ -39,6 +39,7 @@
   main { flex: 1 0 auto; width: 100%; max-width: 760px; margin: 0 auto; padding: 0 12px; }
   #stage-wrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
   #stage { display: block; width: 100%; touch-action: manipulation; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+  #stage-wrap[data-paint="1"] #stage { touch-action: none; cursor: cell; }   /* a finger drag paints parts, so the browser must not scroll or pinch */
   #stage-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 70%, transparent); pointer-events: none; }
   #stage-msg:empty { display: none; }
   #info { min-height: 22px; margin: 8px 2px 4px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
@@ -64,6 +65,7 @@
   .badge { flex: 0 0 auto; }
   .badge.pair { flex: 0 1 auto; min-width: 0; color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
   .badge.axis { color: var(--accent); }
+  .badge.composite { color: var(--sel); border-color: color-mix(in srgb, var(--sel) 55%, var(--line)); }
 
   /* controls (sticky bottom) */
   #controls { position: sticky; bottom: 0; z-index: 5; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -128,8 +130,9 @@
   </div>
   <input id="slider" type="range" min="0" max="0" step="1" value="0" aria-label="granularity level">
   <div class="actions">
+    <label class="toggle" title="when on, drag across parts to select them all; tap a part to add or remove it; drag with it off to scroll and pinch"><input id="paint-mode" type="checkbox" checked><span>paint</span></label>
     <button id="btn-merge" class="btn" type="button" disabled>Merge</button>
-    <label class="toggle" title="when on, Merge also merges the mirror twins into a second group"><input id="mirror-merges" type="checkbox" checked><span>mirror merges</span></label>
+    <label class="toggle" title="when on, Merge also makes the mirror composite: the parts under the composite folded across the axis"><input id="mirror-merges" type="checkbox" checked><span>mirror merges</span></label>
     <button id="btn-unmerge" class="btn ghost warn" type="button" hidden>Unmerge</button>
     <button id="btn-save" class="btn primary" type="button" disabled>Save</button>
     <button id="btn-clear" class="btn ghost" type="button">Clear</button>
@@ -145,7 +148,7 @@ const $ = (id) => document.getElementById(id);
 const stage = $('stage'), stageWrap = $('stage-wrap'), stageMsg = $('stage-msg'), slider = $('slider');
 const countEl = $('count'), costEl = $('cost'), levelIdx = $('level-idx'), levelMax = $('level-max');
 const btnMerge = $('btn-merge'), btnUnmerge = $('btn-unmerge'), btnSave = $('btn-save'), btnClear = $('btn-clear');
-const mirrorEl = $('mirror-merges'), tray = $('tray'), trayCount = $('tray-count'), toastEl = $('toast'), infoEl = $('info');
+const mirrorEl = $('mirror-merges'), paintEl = $('paint-mode'), tray = $('tray'), trayCount = $('tray-count'), toastEl = $('toast'), infoEl = $('info');
 const sctx = stage.getContext('2d');
 const hl = document.createElement('canvas');                  // highlight layer, same device size as the stage
 const hctx = hl.getContext('2d');
@@ -273,6 +276,11 @@ function toggleRegion(id) {
   deriveTwins(); render(); updateInfo();
 }
 function clearSelection() { if (!S.selected.size) return; S.selected.clear(); deriveTwins(); render(); updateInfo(); }
+function selectRegion(id) {                                      // paint: add, never toggle, so a stroke that
+  if (!id || !S.regions.has(id) || S.selected.has(id)) return false;   // crosses a part twice keeps it; painting
+  S.selected.add(id);                                            // over an orange twin selects both sides
+  return true;
+}
 function regionAt(clientX, clientY) {
   if (!S.ids) return 0;
   const r = stage.getBoundingClientRect();
@@ -290,7 +298,11 @@ function updateButtons() {
   btnUnmerge.hidden = !hasGroup; btnUnmerge.disabled = S.busy || !hasGroup;
 }
 function updateInfo() {
-  if (!S.selected.size) { infoEl.innerHTML = '<span>Tap a part · its mirror twin co-selects · pinch to zoom</span>'; return; }
+  if (!S.selected.size) {
+    infoEl.innerHTML = paintEl.checked ? '<span>Drag across parts to select them · tap a part to add or remove it · Merge makes a composite</span>'
+                                       : '<span>Tap a part · its mirror twin co-selects · pinch to zoom</span>';
+    return;
+  }
   const parts = [];
   let i = 0;
   for (const id of S.selected) {
@@ -475,6 +487,7 @@ function renderTray() {
     const badges = document.createElement('div'); badges.className = 'badges';
     const side = document.createElement('span'); side.className = 'badge' + (t.side === 'axis' ? ' axis' : ''); side.textContent = t.side === 'axis' ? 'on axis' : (t.side || '?');
     badges.appendChild(side);
+    if (t.composite) { const c = document.createElement('span'); c.className = 'badge composite'; c.textContent = `composite · ${t.members.length} part${t.members.length === 1 ? '' : 's'}`; c.title = 'components: ' + t.members.join(', '); badges.appendChild(c); }
     if (t.pair_tile_id) { const p = document.createElement('span'); p.className = 'badge pair'; p.textContent = '↔ ' + shortId(t.pair_tile_id).replace(/^L\d+-/, ''); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
     card.append(im, lab, badges);
     card.addEventListener('click', () => showTile(t.id));
@@ -495,21 +508,53 @@ async function showTile(id) {                                   // tapping a sav
 // canvas a pointerup, and a counter would stay stuck at 1 and swallow every later tap
 const active = new Set();
 let down = null;
-const release = (e) => { active.delete(e.pointerId); if (down && e.pointerId === down.id) down = null; };
+// paint: with the toggle on, a one-finger drag selects every part it passes over (a stroke); a press that
+// stays put is still a tap and toggles one part, so an overshoot is removed by tapping it. The stroke is
+// sampled between pointer events so a fast finger does not skip thin parts.
+let stroke = null;                                              // { id, x, y, painted } while a stroke is live
+const PAINT_START_PX = 8;                                       // movement that turns a press into a stroke
+function paintTo(x, y) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(x - stroke.x, y - stroke.y) / 3));
+  let changed = false;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    changed = selectRegion(regionAt(stroke.x + (x - stroke.x) * t, stroke.y + (y - stroke.y) * t)) || changed;
+  }
+  stroke.x = x; stroke.y = y;
+  if (changed) { stroke.painted = true; deriveTwins(); render(); updateInfo(); }
+}
+const release = (e) => { active.delete(e.pointerId); if (down && e.pointerId === down.id) down = null; if (stroke && e.pointerId === stroke.id) stroke = null; };
 stage.addEventListener('pointerdown', (e) => {
   active.add(e.pointerId);
   down = active.size === 1 ? { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId } : null;   // two fingers = pinch, not a tap
+  if (down === null) stroke = null;
+});
+stage.addEventListener('pointermove', (e) => {
+  if (S.busy || !paintEl.checked || !down || e.pointerId !== down.id) return;
+  if (!stroke) {
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < PAINT_START_PX) return;
+    stroke = { id: e.pointerId, x: down.x, y: down.y, painted: false };
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture is a nicety */ }
+    stage.dataset.painting = '1';
+  }
+  paintTo(e.clientX, e.clientY);
 });
 stage.addEventListener('pointerup', (e) => {
   active.delete(e.pointerId);
+  const wasStroke = stroke && e.pointerId === stroke.id;
+  if (wasStroke) { paintTo(e.clientX, e.clientY); stroke = null; stage.dataset.painting = ''; }
   if (!down || e.pointerId !== down.id) return;
   const d = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = Date.now() - down.t;
   down = null;
+  if (wasStroke) return;                                        // the stroke selected on the way; no toggle at its end
   if (d < 12 && dt < 700 && !S.busy) toggleRegion(regionAt(e.clientX, e.clientY));
 });
-stage.addEventListener('pointercancel', release);
-stage.addEventListener('pointerleave', release);
+stage.addEventListener('pointercancel', (e) => { release(e); stage.dataset.painting = ''; });
+stage.addEventListener('pointerleave', (e) => { if (!stroke) release(e); });   // a captured stroke may leave and come back
 window.addEventListener('pointerup', release);
+function applyPaintMode() { stageWrap.dataset.paint = paintEl.checked ? '1' : ''; updateInfo(); }
+paintEl.addEventListener('change', applyPaintMode);
+applyPaintMode();
 stage.addEventListener('contextmenu', (e) => e.preventDefault());
 slider.addEventListener('input', () => requestLevel(Number(slider.value), false));
 slider.addEventListener('change', () => requestLevel(Number(slider.value), true));

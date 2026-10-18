@@ -142,12 +142,19 @@ class ReviewState:
 
     def _tile_json(self, rec: Any) -> dict:
         tid = str(_field(rec, "id"))
+        members = [str(m) for m in (_field(rec, "members", []) or [])]
         return {
             "id": tid, "png_url": f"/api/tiles/{tid}.png", "side": _field(rec, "side"),
             "pair_tile_id": _field(rec, "pair_tile_id"), "pair_iou": _field(rec, "pair_iou"),
             "area_px": _field(rec, "area_px"), "width": _field(rec, "width"), "height": _field(rec, "height"),
             "created_at": _field(rec, "created_at"),
+            "members": members, "composite": bool(members),
         }
+
+    @staticmethod
+    def _tile_level(level: int, rid: int) -> int:
+        """A composite is the same region at every level (pinned), so its tile lives at level 0."""
+        return 0 if rid >= GROUP_ID_BASE else int(level)
 
     # ---- validation helpers --------------------------------------------------------------
     def _check_level(self, level: Any) -> int:
@@ -201,7 +208,7 @@ class ReviewState:
                     "centroid": [round(float(info.centroid[0]), 2), round(float(info.centroid[1]), 2)],
                     "side": sides.get(rid), "twin": int(t) if t is not None else None,
                     "iou": round(iou[rid], 4) if rid in iou else None,
-                    "saved_tile_id": saved.get((i, rid)),
+                    "saved_tile_id": saved.get((self._tile_level(i, rid), rid)),
                     "group_index": rid - GROUP_ID_BASE if rid >= GROUP_ID_BASE else None,
                 }
             return out
@@ -217,13 +224,13 @@ class ReviewState:
             missing = [r for r in ids if r not in regs]
             if missing:
                 raise ApiError(404, f"no region {missing[0]} at level {i}")
-            _sides, twin, _iou = self._pair_info(i)
             leaves = sorted({leaf for r in ids for leaf in regs[r].leaves})
             mirror_leaves: list[int] | None = None
-            if mirror and all(twin.get(r) is not None for r in ids):
-                mirror_leaves = sorted({leaf for r in ids for leaf in regs[twin[r]].leaves})
-                if set(mirror_leaves) & set(leaves):      # the twins are among the tapped regions
-                    mirror_leaves = None
+            if mirror:
+                # the mirror of the composite as a whole, found on the fold: the parts under the folded
+                # composite, whether or not each tapped part had a twin of its own (empty when the
+                # composite straddles the axis and is its own mirror)
+                mirror_leaves = s.mirror_leaves(leaves) or None
             created: list[int] = []
             s.add_group(leaves)
             created.append(int(s.leaf_to_region(i)[leaves[0]]))
@@ -268,8 +275,8 @@ class ReviewState:
                     records[rid], records[t] = self._save_pair(lib, i, rid, t, iou.get(rid), saved)
                 else:
                     # a twin saved earlier on its own still gets linked
-                    partner = saved.get((i, t)) if t is not None else None
-                    records[rid] = self._save_one(lib, i, rid, saved, partner, iou.get(rid))
+                    partner = saved.get((self._tile_level(i, t), t)) if t is not None else None
+                    records[rid] = self._save_one(lib, self._tile_level(i, rid), rid, saved, partner, iou.get(rid))
             return {"tiles": [self._tile_json(records[r]) for r in ids]}
 
     def _existing(self, lib: Any, level: int, rid: int, saved: dict) -> Any:
@@ -286,7 +293,10 @@ class ReviewState:
         """Save one region (or return the tile that already exists); link it to `partner` (a tile id) if given."""
         rec = self._existing(lib, level, rid, saved)
         if rec is None:
-            rec = lib.save_tile(self.session, level, rid)
+            if rid >= GROUP_ID_BASE and hasattr(lib, "save_composite"):
+                rec = lib.save_composite(self.session, level, rid)     # the composite and its components
+            else:
+                rec = lib.save_tile(self.session, level, rid)
             saved[(level, rid)] = str(_field(rec, "id"))
         tid = str(_field(rec, "id"))
         if partner is not None and partner != tid and _field(rec, "pair_tile_id") != partner:
@@ -295,6 +305,12 @@ class ReviewState:
         return rec
 
     def _save_pair(self, lib: Any, level: int, a: int, b: int, iou: float | None, saved: dict) -> tuple[Any, Any]:
+        la, lb = self._tile_level(level, a), self._tile_level(level, b)
+        if a >= GROUP_ID_BASE or b >= GROUP_ID_BASE:         # a composite in the pair: save each (with its
+            # components), then link
+            ra = self._save_one(lib, la, a, saved)
+            rb = self._save_one(lib, lb, b, saved, str(_field(ra, "id")), iou)
+            return lib.get(str(_field(ra, "id"))) or ra, rb
         ra = self._existing(lib, level, a, saved)
         rb = self._existing(lib, level, b, saved)
         if ra is None and rb is None and hasattr(lib, "save_pair"):
