@@ -447,9 +447,12 @@ def build_merge_tree_symmetric(fragments: np.ndarray, ink_dist: np.ndarray, t0: 
         push(nu, nu)
         for w_ in neighbours(nu):
             push(nu, w_)
-    # whatever could not merge symmetrically: join by the ordinary cost order
+    # whatever could not merge symmetrically: join by the ordinary cost order. These merges are one-sided, so
+    # none of them may end a level (unit_end False) until the tail is complete: a level cut inside it would show
+    # one twin merged and its counterpart not.
     alive = [rid for rid, r in regions.items() if r.alive]
     n_disc = 0
+    n_sym = len(merges)
     if len(alive) > 1:
         heap2 = []
         for a in alive:
@@ -464,15 +467,19 @@ def build_merge_tree_symmetric(fragments: np.ndarray, ink_dist: np.ndarray, t0: 
             if ra is None or rb is None or not ra.alive or not rb.alive or b not in ra.nbrs:
                 continue
             c2, info = ecost(a, b)
-            nid = merge_regions(a, b, c2, info, unit_end=True)
+            nid = merge_regions(a, b, c2, info, unit_end=False)
             for d in regions[nid].nbrs:
                 cc, _i = ecost(nid, d)
                 heapq.heappush(heap2, (cc, min(nid, d), max(nid, d)))
         rest = [rid for rid, r in regions.items() if r.alive]
         while len(rest) > 1:
-            nid = merge_regions(rest[0], rest[1], state["prev"], None, unit_end=True)
+            nid = merge_regions(rest[0], rest[1], state["prev"], None, unit_end=False)
             n_disc += 1
             rest = [nid] + rest[2:]
+    for st in stats[n_sym:]:
+        st["fallback"] = True
+    if len(stats) > n_sym:
+        stats[-1]["unit_end"] = True                     # one region left: the only cut after the tail
     tree = MergeTree(n, merges)
     tree.validate()
     return MergeResult(tree=tree, stats=stats, n_disconnected=n_disc)

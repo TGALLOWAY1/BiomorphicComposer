@@ -108,6 +108,22 @@ def test_fold_maps_each_point_onto_its_twin_despite_a_drawn_offset():
     assert np.all(np.abs(curve[:, 1] - 121.5) < 4)               # the local centre line sits between the halves
 
 
+def test_twin_of_a_twin_is_the_point_itself_on_both_halves():
+    img = _drawing(right_dy=4, right_dx=3)
+    lab, paper, ink, figure = _session_arrays(img)
+    fold = fold_mod.estimate_fold(lab, ink.mask, figure, 120.0, ink.t0)
+    tx, ty = fold.twin_maps()
+    # the right top cell's corner folds back onto the left one: the drawn offset is undone, not doubled
+    assert abs(tx[34, 212] - 30) <= 2.5 and abs(ty[34, 212] - 30) <= 2.5
+    h, w = fold.shape
+    gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+    ttx = cv2.remap(tx, tx, ty, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    tty = cv2.remap(ty, tx, ty, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    err = np.hypot(ttx - gx, tty - gy)
+    off_seam = figure & (np.abs(gx - 121.5) > 6)                  # the halves meet on the centre line
+    assert np.percentile(err[off_seam], 99) < 0.5
+
+
 def test_fold_round_trips_through_the_session_file(tmp_path):
     img = _drawing()
     lab, paper, ink, figure = _session_arrays(img)
@@ -184,3 +200,24 @@ def test_symmetric_merge_keeps_every_level_mirror_consistent():
             areas.setdefault("L" if cx < 110 else "R" if cx > 130 else "C", []).append(int(m.sum()))
         left, right = sorted(areas.get("L", [])), sorted(areas.get("R", []))
         assert len(left) == len(right) and all(abs(a - b) <= 0.05 * max(a, b) for a, b in zip(left, right))
+
+
+def test_one_sided_fallback_merges_are_never_cut_mid_tail():
+    # twin pairs P and S border each other on both sides; Q's twins border P on the left only, so once P and S
+    # have merged nothing symmetric is left and the remaining regions join one-sidedly
+    qr, pl, ql, pr, sl, sr = 1, 2, 3, 4, 5, 6
+    f = np.zeros((60, 100), np.int32)
+    for k, rid in enumerate((qr, pl, ql, pr)):
+        f[5:30, 5 + 22 * k:27 + 22 * k] = rid                    # a row of four cells, each touching the next
+    f[30:55, 31:45] = sl                                          # under P's left twin only
+    f[30:55, 75:89] = sr                                          # under P's right twin only
+    pairing = {"sides": {pl: "L", ql: "L", sl: "L", pr: "R", qr: "R", sr: "R"},
+               "pairs": [{"a": pl, "b": pr}, {"a": ql, "b": qr}, {"a": sl, "b": sr}]}
+    ink_dist = np.full(f.shape, 2.0, np.float32)                  # every border a full-thickness line
+    mr = merge_mod.build_merge_tree_symmetric(f, ink_dist, 2.0, 50.0, pairing)
+    mr.tree.validate()
+    assert len(mr.tree.merges) == 5 and mr.n_disconnected == 0
+    assert [bool(st.get("fallback")) for st in mr.stats] == [False, False, True, True, True]
+    assert [st["unit_end"] for st in mr.stats] == [False, True, False, False, True]
+    levels = merge_mod.choose_levels(mr.tree, mr.stats, {"levels": 6, "level_min_regions": 1})
+    assert {lv["n_merges"] for lv in levels} == {0, 2, 5}         # never one twin merged and the other not

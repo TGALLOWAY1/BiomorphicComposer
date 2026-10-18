@@ -88,7 +88,7 @@ All coordinates are in **working-copy pixel space** unless stated otherwise.
 ```json
 {
   "schema": 1,
-  "pipeline_version": "0.1.0",
+  "pipeline_version": "0.2.0",
   "session_id": "3fa9c1b2",                       // first 8 hex of sha256(source.sha256 + pipeline_version + created_at)
   "created_at": "2026-10-12T10:00:00Z",
   "source": {"path": "samples/IMG_2295.jpeg", "filename": "IMG_2295.jpeg", "sha256": "...",
@@ -148,13 +148,17 @@ lines were added) → leaf pairing → mirror-consistent merge → write session
   keeping only bridges that split a cell into real components (no scraps, no slivers).
 - **fold**: every point's twin = reflection about the axis, then an affine map (ECC on blurred ink, left half) and a
   smooth residual displacement field (DIS optical flow on L, Gaussian-smoothed at ~1.4 % of the figure width, clipped).
+  That map serves the left of the local centre line; the right uses its exact inverse (fixed-point iteration), so the
+  twin of a twin is the point itself and a vertical offset between the halves is undone from either side.
   The local centre line is where a point is its own twin; the centre band is that curve ± `fold_band_frac` of the width.
 - **complete**: a cell lying on two or more cells of the other half (folded) gets the faint dark pixels under the
   folded dividing line added to the ink, kept only when each resulting piece lies on its own counterpart cell.
 - **merge** (mirror-consistent, `merge_symmetric`): units are twin pairs (from the leaf pairing), central regions and
   unpaired regions; two pairs merge only when both sides are adjacent (two merges, one cost), a central region takes a
   pair only when it touches both twins, an unpaired region joins a neighbour; merges completing a unit are flagged
-  `unit_end` and levels are cut only there, so every level stays mirror-consistent.
+  `unit_end` and levels are cut only there, so every level stays mirror-consistent. Regions left when no symmetric
+  merge remains join by the ordinary cost order (`fallback` in the stats, `fallback_merges` in the counts); only the
+  last of those merges is a unit end, so no level is cut with one twin merged and the other not.
 - **merge**: region adjacency graph with per-edge `border_len`, `ink_sum` (sum of ink half-thickness along the border), per-region area/perimeter/bbox/centroid/side. Cost is **dominated by ink on the shared border**: `ink_norm = (ink_sum / border_len) / t0`, then small modifiers for how embedded the smaller region is (`border_len / min(perimeter)`), size, and an **axis penalty** for merging regions on opposite sides. Agglomerate with a heap (lazy invalidation) until one region, recording every merge → `merge_tree.json`. Choose levels.
 - **pairing** (per level, with a fold): the other half is folded on top, so every region is compared with the regions
   its pixels' twins fall in; IoU of the region with the folded twin after a residual shift of at most `fold_shift_px`,

@@ -7,8 +7,11 @@ reflection about the axis followed by an alignment of the mirrored image onto th
   2. a smooth residual displacement field for the drift an affine cannot follow: DIS optical flow on the
      lightness channel, smoothed with a Gaussian of ~1.4 % of the figure width and clipped, so it can bend
      the fold gently but cannot move one component onto another.
-For every pixel p the result gives twin(p), the point whose mirror image lands on p:
-    twin(p) = R(A [p + f(p); 1]),   R(x, y) = (2 * axis_x - 1 - x, y)   (pixel convention of pairing.py)
+For every pixel p the result gives twin(p), the point whose mirror image lands on p. The alignment is fitted on the
+left half, so there twin(p) = R(G(p)) with G(p) = A [p + f(p); 1] and R(x, y) = (2 * axis_x - 1 - x, y) (pixel
+convention of pairing.py); on the right half twin is the inverse of that map, the q with R(G(q)) = p, found by
+fixed-point iteration, so that twin(twin(p)) = p everywhere (a vertical offset between the halves maps down on one
+side and back up on the other). The halves meet on the local centre line, not the straight axis.
 The local centre line is where twin(p) = p; the centre band is that curve widened by a tolerance.
 """
 from __future__ import annotations
@@ -55,16 +58,44 @@ class Fold:
 
     # ---- geometry --------------------------------------------------------------------------------
     def twin_maps(self) -> tuple[np.ndarray, np.ndarray]:
-        """float32 HxW maps (tx, ty): the twin location of every pixel."""
+        """float32 HxW maps (tx, ty): the twin location of every pixel (an involution)."""
         if self._twin is None:
             h, w = self.shape
             f = cv2.resize(self.field, (w, h), interpolation=cv2.INTER_LINEAR)
-            gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
-            px, py = gx + f[..., 0], gy + f[..., 1]
+            f0, f1 = np.ascontiguousarray(f[..., 0]), np.ascontiguousarray(f[..., 1])
             a = self.affine.astype(np.float32)
-            ux = a[0, 0] * px + a[0, 1] * py + a[0, 2]
-            uy = a[1, 0] * px + a[1, 1] * py + a[1, 2]
-            self._twin = (np.float32(2.0 * self.axis_x - 1.0) - ux, uy)
+
+            def g(qx: np.ndarray, qy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+                """G(q) = A [q + f(q); 1], with the residual field sampled at q (2-D maps: remap's limit)."""
+                fx = cv2.remap(f0, qx, qy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                fy = cv2.remap(f1, qx, qy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+                px, py = qx + fx, qy + fy
+                return a[0, 0] * px + a[0, 1] * py + a[0, 2], a[1, 0] * px + a[1, 1] * py + a[1, 2]
+
+            c = np.float32(2.0 * self.axis_x - 1.0)
+            gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+            ux, uy = g(gx, gy)
+            tx, ty = c - ux, uy                                   # forward map R(G(p))
+            # The halves meet on the local centre line, where the forward map's twin stops lying to the right;
+            # splitting on the straight line instead would leave the strip between the two lines inconsistent.
+            right = tx <= gx
+            cols = np.nonzero(right.any(axis=0))[0]
+            if cols.size:
+                x0 = int(cols[0])
+                sub = right[:, x0:]
+                rx = np.ascontiguousarray(c - gx[:, x0:])         # right half: solve G(q) = R(p)
+                ry = np.ascontiguousarray(gy[:, x0:])
+                qx, qy = rx.copy(), ry.copy()
+                for _ in range(20):    # G is near the identity; where the field is steep convergence is slower
+                    gqx, gqy = g(qx, qy)
+                    dx, dy = gqx - rx, gqy - ry
+                    qx -= dx
+                    qy -= dy
+                    if max(np.abs(dx[sub]).max(), np.abs(dy[sub]).max()) < 0.05:
+                        break
+                tx[:, x0:] = np.where(sub, qx, tx[:, x0:])
+                ty[:, x0:] = np.where(sub, qy, ty[:, x0:])
+            self._twin = (tx, ty)
         return self._twin
 
     def mirror(self, img: np.ndarray) -> np.ndarray:
@@ -164,8 +195,10 @@ def estimate_fold(lab: np.ndarray, ink_mask: np.ndarray, figure_mask: np.ndarray
     b8 = np.clip(np.where(both, mL * 2.55, 0), 0, 255).astype(np.uint8)
     flow = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM).calc(a8, b8, None)
     sig = max(2.0, float(p["fold_flow_sigma_frac"]) * fig_w)
-    wgt = cv2.GaussianBlur(both.astype(np.float32), (0, 0), sig)
-    f = np.stack([cv2.GaussianBlur(flow[..., c] * both, (0, 0), sig) / np.maximum(wgt, 1e-3) for c in range(2)], -1)
+    # the residual belongs to the forward map, which serves the left half; the right half uses its inverse
+    fit = both & (np.arange(w)[None, :] < axis_x - 0.5)
+    wgt = cv2.GaussianBlur(fit.astype(np.float32), (0, 0), sig)
+    f = np.stack([cv2.GaussianBlur(flow[..., c] * fit, (0, 0), sig) / np.maximum(wgt, 1e-3) for c in range(2)], -1)
     clip = float(p["fold_flow_clip_frac"]) * fig_w
     f = np.clip(f, -clip, clip).astype(np.float32)
     step = max(1, int(p["fold_store_step"]))
@@ -179,7 +212,9 @@ def estimate_fold(lab: np.ndarray, ink_mask: np.ndarray, figure_mask: np.ndarray
     near = cv2.dilate(ink_mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     lh = left & ink_mask
     denom = max(1, int(lh.sum()))
-    mag = np.hypot(f[..., 0], f[..., 1])[fig]
+    rightside = fig & (np.arange(w)[None, :] > axis_x + 2 * t0 + 4)
+    rdenom = max(1, int((rightside & ink_mask).sum()))
+    mag = np.hypot(f[..., 0], f[..., 1])[fit]
     fold.meta = {
         "affine": [[round(float(v), 6) for v in row] for row in affine],
         "ecc": round(cc, 4),
@@ -191,7 +226,8 @@ def estimate_fold(lab: np.ndarray, ink_mask: np.ndarray, figure_mask: np.ndarray
                      "p90": round(float(np.percentile(mag, 90)), 2) if mag.size else 0.0,
                      "sigma": round(sig, 1), "clip": round(clip, 1)},
         "ink_on_folded_ink": {"plain": round(float((mink_plain & near & left).sum()) / denom, 4),
-                              "fold": round(float((mink_fold & near & left).sum()) / denom, 4)},
+                              "fold": round(float((mink_fold & near & left).sum()) / denom, 4),
+                              "fold_right": round(float((mink_fold & near & rightside).sum()) / rdenom, 4)},
         "band_half_width": round(band, 1),
     }
     curve = fold.axis_curve(fig, step=16)

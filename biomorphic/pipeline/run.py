@@ -135,6 +135,7 @@ def run_pipeline(photo: Path | str, out_dir: Path | str, params: dict | None = N
                    "cells_first_pass": n_cells_first, "lines_completed": len(completed),
                    "gaps_bridged": int(ink.n_bridges),
                    "leaf_pairs": len(leaf_pairing["pairs"]) if leaf_pairing else None,
+                   "fallback_merges": sum(1 for st in mr.stats if st.get("fallback")),
                    "disconnected_merges": int(mr.n_disconnected)},
         "levels": levels,
         "fold": fold.meta,
