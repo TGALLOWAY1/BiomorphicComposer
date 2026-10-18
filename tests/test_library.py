@@ -348,3 +348,56 @@ def test_provenance_records_the_deskew_angle(synthetic_dir, tmp_path):
     lib2 = Library.open(old)
     cols = {r[1] for r in lib2.conn.execute("PRAGMA table_info(provenance)")}
     assert "working_angle_deg" in cols
+
+
+# ----------------------------------------------------------------------------- composites
+def test_save_composite_stores_the_components_too(lib, lib_dir, session):
+    gid = GROUP_ID_BASE + session.add_group([1, 2])
+    rec = lib.save_composite(session, 1, gid)
+    assert rec.is_composite and rec.provenance["user_merged"] == 1
+    assert rec.id.endswith(f"-L01-r{gid}") and rec.provenance["fragment_ids"] == [1, 2]
+    # the components are level-0 tiles, cut as the level's own regions although the group covers them
+    assert rec.members == [make_tile_id("synthetic", session.session_id, 0, 1),
+                           make_tile_id("synthetic", session.session_id, 0, 2)]
+    members = lib.members(rec.id)
+    assert [m.id for m in members] == rec.members
+    assert members[0].area_px == 50 * 60 and members[1].area_px == 50 * 70 and not members[0].is_composite
+    assert members[0].provenance["fragment_ids"] == [1] and members[0].provenance["user_merged"] == 0
+    assert (lib_dir / "tiles" / f"{members[0].id}.png").exists()
+    assert lib.composites_of(members[0].id) == [rec.id]
+    assert {t.id for t in lib.list_tiles()} == {rec.id, *rec.members} and lib.summary()["n_tiles"] == 3
+    assert [t.members for t in lib.list_tiles() if t.id == rec.id] == [rec.members]   # list_tiles carries members too
+    # a component saved earlier is reused, not duplicated
+    gid2 = GROUP_ID_BASE + session.add_group([1, 2, 5])        # absorbs the first group (same index 0)
+    assert gid2 == gid
+    lib.delete_tile(rec.id)
+    rec2 = lib.save_composite(session, 0, gid2)
+    assert rec2.members[:2] == rec.members and len(rec2.members) == 3 and lib.summary()["n_tiles"] == 4
+
+
+def test_composite_is_one_transaction_and_members_survive_its_deletion(lib, lib_dir, session):
+    gid = GROUP_ID_BASE + session.add_group([3, 4])
+    rec = lib.save_composite(session, 0, gid)
+    lib.delete_tile(rec.id)
+    assert lib.get(rec.id) is None and not (lib_dir / "tiles" / f"{rec.id}.png").exists()
+    assert [m.id for m in lib.list_tiles()] == rec.members                 # components stay
+    assert lib.composites_of(rec.members[0]) == []
+    assert lib.conn.execute("SELECT COUNT(*) FROM tile_members").fetchone()[0] == 0
+    # saving the same composite twice raises and leaves nothing behind
+    rec = lib.save_composite(session, 0, gid)
+    with pytest.raises(TileExists):
+        lib.save_composite(session, 0, gid)
+    assert lib.summary()["n_tiles"] == 3
+    with pytest.raises(ValueError):
+        lib.save_composite(session, 0, 3)                                   # not a group
+
+
+def test_composite_components_keep_their_own_side(lib, session):
+    """A component under a composite is cut from the group-free partition, and its side comes from the same
+    partition: the axis cell stays 'axis' although the composite covering it is not."""
+    gid = GROUP_ID_BASE + session.add_group([1, 5])
+    rec = lib.save_composite(session, 0, gid)
+    by_region = {m.provenance["region_id"]: m for m in lib.members(rec.id)}
+    assert by_region[5].side == "axis" and by_region[1].side == "L"
+    assert session.pairing(0, apply_groups=False)["sides"][5] == "axis"
+    assert 5 not in session.pairing(0)["sides"]                 # the composite hides it in the grouped partition

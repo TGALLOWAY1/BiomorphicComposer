@@ -47,19 +47,39 @@ def test_baseline_pairing(synthetic_dir):
     assert p1["twin"] == {6: 7, 7: 6}
 
 
-def test_manual_groups_union_regions(synthetic_dir):
+def test_manual_groups_are_pinned_at_every_level(synthetic_dir):
     s = Session.load(synthetic_dir)
     gi = s.add_group([1, 5])
     gid = GROUP_ID_BASE + gi
     lab = s.label_map(0)
     assert set(np.unique(lab).tolist()) == {0, 2, 3, 4, gid}
     assert s.regions(0)[gid].leaves == (1, 5)
-    # at a coarser level the group swallows the whole region containing leaf 1
-    assert set(np.unique(s.label_map(1)).tolist()) == {0, 7, gid}
+    # coarser: the composite stays exactly its leaves; region 6 (= 1 + 2) keeps only leaf 2
+    assert set(np.unique(s.label_map(1)).tolist()) == {0, 6, 7, gid}
+    assert s.regions(1)[gid].leaves == (1, 5) and s.regions(1)[6].leaves == (2,)
+    # at the root level everything else is one region and the composite is still its own
+    top = len(s.levels) - 1
+    assert s.regions(top)[gid].leaves == (1, 5)
+    assert sorted(s.regions(top)) == sorted([9, gid]) and s.regions(top)[9].leaves == (2, 3, 4)
+    # without groups the level is untouched; cut_tile can take the level's own region under a group
+    assert set(np.unique(s.label_map(1, apply_groups=False)).tolist()) == {0, 5, 6, 7}
+    rgba, bbox = s.cut_tile(0, 1, apply_groups=False)
+    assert bbox == (20, 30, 50, 60) and rgba[..., 3].min() == 255
     s2 = Session.load(synthetic_dir)  # persisted
     assert s2.groups == [[1, 5]]
     s2.remove_group(0)
     assert Session.load(synthetic_dir).groups == []
+
+
+def test_mirror_leaves_folds_a_composite_as_a_whole(synthetic_dir):
+    s = Session.load(synthetic_dir)
+    assert s.mirror_leaves([1, 2]) == [3, 4]
+    assert s.mirror_leaves([3]) == [1]
+    # a composite that straddles the axis (the axis cell, or a twin pair) is its own mirror
+    assert s.mirror_leaves([5]) == []
+    assert s.mirror_leaves([2, 5]) == []
+    assert s.mirror_leaves([1, 3]) == []
+    assert s.mirror_leaves([]) == []
 
 
 def test_cut_tile_roundtrip(synthetic_dir):

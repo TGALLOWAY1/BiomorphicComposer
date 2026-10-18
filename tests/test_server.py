@@ -290,3 +290,34 @@ def test_post_to_an_unknown_route_does_not_desync_a_kept_alive_connection(server
     assert r.status == 200
     assert "meta" in json.loads(r.read())
     conn.close()
+
+
+def test_save_composite_at_any_level_records_its_parts(server):
+    """A pinned composite is the same region at every level, so saving it from level 1 stores one tile at
+    level 0 together with its component tiles, and the green dot shows at every level."""
+    _library_or_skip(server)
+    created = post_json(server, "/api/merge", {"level": 0, "region_ids": [1, 2], "mirror": True})["created"]
+    gid, mirror_gid = created
+    j = post_json(server, "/api/save", {"level": 1, "region_ids": [gid]})
+    tile = j["tiles"][0]
+    assert tile["id"].endswith(f"-L00-r{gid}") and tile["composite"] and len(tile["members"]) == 2
+    assert all(m.endswith(("-L00-r1", "-L00-r2")) for m in tile["members"])
+    for lv in (0, 1, 3):
+        assert get_json(server, f"/api/levels/{lv}/regions")[str(gid)]["saved_tile_id"] == tile["id"]
+    lib = get_json(server, "/api/library")["tiles"]
+    assert {t["id"] for t in lib} == {tile["id"], *tile["members"]}
+    assert sum(t["composite"] for t in lib) == 1
+    # the mirror composite links to it as a pair when saved from a coarser level
+    j2 = post_json(server, "/api/save", {"level": 2, "region_ids": [mirror_gid]})
+    assert j2["tiles"][0]["id"].endswith(f"-L00-r{mirror_gid}") and j2["tiles"][0]["pair_tile_id"] == tile["id"]
+    assert len(get_json(server, "/api/library")["tiles"]) == 6
+
+
+def test_save_twin_composites_together_stores_both_with_components(server):
+    _library_or_skip(server)
+    created = post_json(server, "/api/merge", {"level": 0, "region_ids": [1, 2], "mirror": True})["created"]
+    j = post_json(server, "/api/save", {"level": 0, "region_ids": created})
+    a, b = j["tiles"]
+    assert a["composite"] and b["composite"] and len(a["members"]) == 2 and len(b["members"]) == 2
+    assert a["pair_tile_id"] == b["id"] and b["pair_tile_id"] == a["id"]
+    assert len(get_json(server, "/api/library")["tiles"]) == 6

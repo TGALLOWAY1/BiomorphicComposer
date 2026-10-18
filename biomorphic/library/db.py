@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS provenance (
 CREATE TABLE IF NOT EXISTS tags (
     tile_id TEXT REFERENCES tiles(id) ON DELETE CASCADE, tag TEXT, created_at TEXT,
     PRIMARY KEY (tile_id, tag));
+CREATE TABLE IF NOT EXISTS tile_members (
+    composite_id TEXT REFERENCES tiles(id) ON DELETE CASCADE,   -- a composite tile ...
+    member_id TEXT REFERENCES tiles(id) ON DELETE CASCADE,      -- ... and one of the component tiles it is made of
+    ordinal INT,
+    PRIMARY KEY (composite_id, member_id));
 CREATE TRIGGER IF NOT EXISTS provenance_immutable BEFORE UPDATE ON provenance
 BEGIN SELECT RAISE(ABORT, 'provenance is immutable'); END;
 CREATE INDEX IF NOT EXISTS provenance_by_source ON provenance(source_sha256);
@@ -125,10 +130,15 @@ class TileRecord:
     mean_a: float
     mean_b: float
     provenance: dict = field(default_factory=dict)
+    members: list[str] = field(default_factory=list)   # component tile ids when this tile is a composite
 
     @property
     def mean_lab(self) -> tuple[float, float, float]:
         return (self.mean_L, self.mean_a, self.mean_b)
+
+    @property
+    def is_composite(self) -> bool:
+        return bool(self.members)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -285,6 +295,52 @@ class Library:
             self.link_pair(a.id, b.id, iou)
             return self.get(a.id), self.get(b.id)
 
+    def save_composite(self, session: Session, level_index: int, group_region_id: int, *,
+                       pair_with: str | int | TileRecord | None = None, pair_iou: float | None = None) -> TileRecord:
+        """Save a composite (a manual group's region) together with its component tiles, in one transaction.
+
+        The components are the level-0 regions inside the group (cut as the level's own regions, ignoring
+        groups), each stored as an ordinary tile unless it already is, and recorded in `tile_members`; so the
+        composite and its components are both in the library and either can be harvested later. The
+        composite itself is cut at `level_index` (a pinned group is the same region at every level).
+        """
+        level_index, gid = int(level_index), int(group_region_id)
+        if gid < GROUP_ID_BASE:
+            raise ValueError(f"{gid} is not a group region id (>= {GROUP_ID_BASE})")
+        with self.transaction():
+            rec = self._insert_tile(session, level_index, gid)
+            leaves = set(session.regions(level_index)[gid].leaves)
+            root0 = session.leaf_to_region_no_groups(0)
+            member_regions = sorted({int(root0[leaf]) for leaf in leaves})
+            for k, rid in enumerate(member_regions):
+                mid = self.tile_id_for(session, 0, rid)
+                if not self._exists(mid):
+                    self._insert_tile(session, 0, rid, apply_groups=False)
+                self.conn.execute("INSERT OR IGNORE INTO tile_members (composite_id, member_id, ordinal) VALUES (?, ?, ?)",
+                                  (rec.id, mid, k))
+            if pair_with is not None:
+                self.link_pair(rec.id, self._resolve_pair_with(session, level_index, pair_with), pair_iou)
+            return self.get(rec.id)
+
+    def members(self, tile_id: str) -> list[TileRecord]:
+        """The component tiles of a composite, in order (empty for a plain tile)."""
+        with self._lock:
+            rows = self.conn.execute("SELECT member_id FROM tile_members WHERE composite_id = ? ORDER BY ordinal",
+                                     (str(tile_id),)).fetchall()
+        return [r for r in (self.get(row[0]) for row in rows) if r is not None]
+
+    def composites_of(self, tile_id: str) -> list[str]:
+        """Ids of the composites a tile is a component of."""
+        with self._lock:
+            rows = self.conn.execute("SELECT composite_id FROM tile_members WHERE member_id = ? ORDER BY composite_id",
+                                     (str(tile_id),)).fetchall()
+        return [row[0] for row in rows]
+
+    def _member_ids(self, tile_id: str) -> list[str]:
+        rows = self.conn.execute("SELECT member_id FROM tile_members WHERE composite_id = ? ORDER BY ordinal",
+                                 (str(tile_id),)).fetchall()
+        return [row[0] for row in rows]
+
     def link_pair(self, a_id: str, b_id: str, iou: float | None) -> None:
         """Set pair_tile_id / pair_iou on both tiles (symmetric). Any stale link of a previous partner is cleared.
 
@@ -338,7 +394,11 @@ class Library:
     def get(self, tile_id: str) -> TileRecord | None:
         with self._lock:
             row = self.conn.execute(_SELECT_TILES + " WHERE t.id = ?", (str(tile_id),)).fetchone()
-        return _record(row) if row is not None else None
+            if row is None:
+                return None
+            rec = _record(row)
+            rec.members = self._member_ids(rec.id)
+        return rec
 
     def list_tiles(self, source_sha256: str | None = None) -> list[TileRecord]:
         """Every tile in save order, optionally only those cut from one source image."""
@@ -349,7 +409,13 @@ class Library:
         sql += " ORDER BY t.created_at, t.rowid"
         with self._lock:
             rows = self.conn.execute(sql, args).fetchall()
-        return [_record(r) for r in rows]
+            members: dict[str, list[str]] = {}
+            for cid, mid in self.conn.execute("SELECT composite_id, member_id FROM tile_members ORDER BY ordinal"):
+                members.setdefault(cid, []).append(mid)
+        out = [_record(r) for r in rows]
+        for rec in out:
+            rec.members = members.get(rec.id, [])
+        return out
 
     def tile_path(self, tile_id: str) -> Path:
         """Absolute path of the stored PNG. Raises KeyError for an unknown tile."""
@@ -414,17 +480,19 @@ class Library:
             raise KeyError(f"pair_with: no tile {partner_id!r} in the library")
         return partner_id
 
-    def _insert_tile(self, session: Session, level_index: int, region_id: int) -> TileRecord:
-        """Insert sources (if new), tiles and provenance rows and write the PNG. Must run inside `transaction()`."""
+    def _insert_tile(self, session: Session, level_index: int, region_id: int, apply_groups: bool = True
+                     ) -> TileRecord:
+        """Insert sources (if new), tiles and provenance rows and write the PNG. Must run inside `transaction()`.
+        apply_groups=False cuts the level's own region even where a composite covers it (its components)."""
         assert self._written_stack, "_insert_tile must run inside a transaction"
         meta = session.meta
         tile_id = self.tile_id_for(session, level_index, region_id)
         if self._exists(tile_id):
             raise TileExists(tile_id)
 
-        rgba, bbox = session.cut_tile(level_index, region_id)
-        info = session.regions(level_index)[region_id]
-        sides = session.pairing(level_index).get("sides", {})
+        rgba, bbox = session.cut_tile(level_index, region_id, apply_groups)
+        info = session.regions(level_index, apply_groups)[region_id]
+        sides = session.pairing(level_index, apply_groups).get("sides", {})   # the same partition the cut came from
         side = sides.get(region_id) or ("L" if info.centroid[0] < session.axis_x else "R")
         png = tile_utils.encode_png(rgba)
         png_sha = tile_utils.sha256(png)

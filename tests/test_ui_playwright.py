@@ -185,14 +185,18 @@ def test_review_flow_on_a_phone(server, browser, shots_dir):
         else:
             page.click("#btn-save")
             page.wait_for_function("document.querySelector('#toast').textContent.startsWith('Saved 2')")
-            page.wait_for_function("document.querySelectorAll('#tray .tile').length === 2")
+            # two composites, each stored with its two component tiles: six tiles in the tray
+            page.wait_for_function("document.querySelectorAll('#tray .tile').length === 6")
             ids = page.eval_on_selector_all("#tray .tile", "els => els.map(e => e.dataset.id)")
             assert sorted(ids) == sorted(t.id for t in server.state.library.list_tiles())
-            assert all(i.endswith(f"-L00-r{GROUP_ID_BASE}") or i.endswith(f"-L00-r{GROUP_ID_BASE + 1}") for i in ids)
+            composites = [i for i in ids if i.endswith(f"-L00-r{GROUP_ID_BASE}") or i.endswith(f"-L00-r{GROUP_ID_BASE + 1}")]
+            assert len(composites) == 2 and len(ids) == 6
             assert page.locator("#tray .tile .badge.pair").count() == 2
+            assert page.locator("#tray .tile .badge.composite").count() == 2
+            assert "2 parts" in page.inner_text("#tray .tile .badge.composite >> nth=0")
             page.locator("#tray").scroll_into_view_if_needed()          # thumbnails load lazily
             page.wait_for_function("[...document.querySelectorAll('#tray .tile img')].every(i => i.complete && i.naturalWidth > 0)")
-            assert "2 tiles in library" in page.inner_text("#hdr-lib")
+            assert "6 tiles in library" in page.inner_text("#hdr-lib")
             page.wait_for_function("document.querySelector('#info').textContent.includes('saved')")
             ui.shot("06-saved")
 
@@ -236,6 +240,7 @@ def test_tap_recovers_after_a_press_released_off_the_canvas(server, browser, sho
         box = page.locator("#stage").bounding_box()
         cx, cy = centre(1)
         x, y = box["x"] + cx / W * box["width"], box["y"] + cy / H * box["height"]
+        page.uncheck("#paint-mode")                 # a drag is a scroll, not a stroke
         page.mouse.move(x, y)
         page.mouse.down()
         page.mouse.move(box["x"] + 10, max(1.0, box["y"] - 30), steps=5)   # drag out of the stage, into the header
@@ -246,6 +251,63 @@ def test_tap_recovers_after_a_press_released_off_the_canvas(server, browser, sho
         assert ui.attr("data-selected") == [1] and ui.attr("data-twins") == [3]
         page.mouse.click(x, y)                      # a plain mouse click still toggles
         page.wait_for_function("document.querySelector('#stage').dataset.selected === ''")
+        # with paint on, the same drag is a stroke that selects the part it started on, and taps still work after
+        page.check("#paint-mode")
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(box["x"] + 10, max(1.0, box["y"] - 30), steps=5)
+        page.mouse.up()
+        assert ui.attr("data-selected") == [1]
+        ui.tap(cx, cy)
+        page.wait_for_function("document.querySelector('#stage').dataset.selected === ''")
         assert not ui.errors, ui.errors
+    finally:
+        ui.close()
+
+
+def test_paint_a_stroke_across_parts_selects_them(server, browser, shots_dir):
+    """Paint mode (on by default): a drag selects every part under the stroke, twins follow, a tap removes one
+    part again, and with paint off a drag selects nothing (the browser may scroll instead)."""
+    ui = Page(browser, server.url, shots_dir)
+    try:
+        page = ui.page
+        assert page.is_checked("#paint-mode")
+        assert page.get_attribute("#stage-wrap", "data-paint") == "1"
+        assert "Drag" in page.inner_text("#info")
+        box = page.locator("#stage").bounding_box()
+        to_page = lambda ix, iy: (box["x"] + ix / W * box["width"], box["y"] + iy / H * box["height"])  # noqa: E731
+        # a stroke from cell 1 down through cell 2 (they touch at y = 90..100 across an ink line)
+        x1, y1 = to_page(*centre(1))
+        x2, y2 = to_page(*centre(2))
+        page.mouse.move(x1, y1)
+        page.mouse.down()
+        page.mouse.move(x2, y2, steps=12)
+        page.mouse.up()
+        page.wait_for_function("document.querySelector('#stage').dataset.selected === '1,2'")
+        assert ui.attr("data-selected") == [1, 2] and ui.attr("data-twins") == [3, 4]
+        assert not page.is_disabled("#btn-merge")
+        ui.shot("paint-01-stroke")
+        # the stroke's end point is not toggled off: a second stroke over the same parts changes nothing
+        page.mouse.move(x2, y2); page.mouse.down(); page.mouse.move(x1, y1, steps=12); page.mouse.up()
+        assert ui.attr("data-selected") == [1, 2]
+        # a tap removes an overshoot
+        ui.tap(*centre(2))
+        page.wait_for_function("document.querySelector('#stage').dataset.selected === '1'")
+        assert ui.attr("data-twins") == [3]
+        # a stroke across the axis: 1 -> the axis cell 5 -> 3; painting over the orange twin selects both sides
+        page.mouse.move(x1, y1); page.mouse.down()
+        page.mouse.move(*to_page(*centre(3)), steps=12); page.mouse.up()
+        assert sorted(ui.attr("data-selected")) == [1, 3, 5] and ui.attr("data-twins") == []
+        page.click("#btn-clear")
+        # paint off: the same drag selects nothing, a tap still does
+        page.uncheck("#paint-mode")
+        assert page.get_attribute("#stage-wrap", "data-paint") == ""
+        page.mouse.move(x1, y1); page.mouse.down(); page.mouse.move(x2, y2, steps=12); page.mouse.up()
+        assert ui.attr("data-selected") == []
+        ui.tap(*centre(1))
+        assert ui.attr("data-selected") == [1]
+        page.check("#paint-mode")
+        ui.shot("paint-02-off-then-on")
+        assert ui.errors == []
     finally:
         ui.close()

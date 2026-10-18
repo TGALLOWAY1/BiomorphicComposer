@@ -264,33 +264,13 @@ class Session:
         return data
 
     def _apply_groups(self, remap: np.ndarray) -> np.ndarray:
-        """Union every region touched by a manual group into the group's region (id GROUP_ID_BASE + index)."""
-        groups = self.groups
-        parent = list(range(len(groups)))
-
-        def find(i: int) -> int:
-            while parent[i] != i:
-                parent[i] = parent[parent[i]]
-                i = parent[i]
-            return i
-
-        def union(i: int, j: int) -> None:
-            ri, rj = find(i), find(j)
-            if ri != rj:
-                lo, hi = min(ri, rj), max(ri, rj)
-                parent[hi] = lo  # smaller index is the representative
-
-        root_to_group: dict[int, int] = {}
-        for gi, leaves in enumerate(groups):
-            for leaf in leaves:
-                r = int(remap[leaf])
-                if r in root_to_group:
-                    union(gi, root_to_group[r])
-                else:
-                    root_to_group[r] = gi
+        """Pin every manual group: its leaves form the group's region (id GROUP_ID_BASE + index) at every level,
+        no more and no less. A level region that overlaps a group keeps only its other leaves, so sliding
+        coarser never swallows a composite the artist made, and sliding finer never splits it. Groups never
+        share a leaf (add_group absorbs overlaps), so the assignment is a plain write."""
         out = remap.copy()
-        for r, gi in root_to_group.items():
-            out[out == r] = GROUP_ID_BASE + find(gi)
+        for gi, leaves in enumerate(self.groups):
+            out[leaves] = GROUP_ID_BASE + gi
         return out
 
     def label_map(self, level_index: int, apply_groups: bool = True) -> np.ndarray:
@@ -301,16 +281,55 @@ class Session:
         """Array indexed by leaf id giving the region id at this level (index 0 unused)."""
         return self._level_data(level_index)["leaf_to_region"]
 
+    def leaf_to_region_no_groups(self, level_index: int) -> np.ndarray:
+        """As leaf_to_region, for the level's own partition with manual groups ignored."""
+        return self._level_data(level_index, apply_groups=False)["leaf_to_region"]
+
     def region_leaves(self, level_index: int, region_id: int) -> list[int]:
         l2r = self.leaf_to_region(level_index)
         return [int(i) for i in np.nonzero(l2r == region_id)[0] if i != 0]
 
     # ---- region stats -------------------------------------------------------------------
-    def regions(self, level_index: int) -> dict[int, RegionInfo]:
-        data = self._level_data(level_index)
+    def regions(self, level_index: int, apply_groups: bool = True) -> dict[int, RegionInfo]:
+        data = self._level_data(level_index, apply_groups)
         if "regions" not in data:
             data["regions"] = region_stats(data["label_map"], self.working_lab, data["leaf_to_region"])
         return data["regions"]
+
+    # ---- mirror of a set of leaves ----------------------------------------------------------
+    def leaf_mask(self, leaf_ids: list[int]) -> np.ndarray:
+        """HxW bool: the pixels of these leaves."""
+        keep = np.zeros(self.tree.n_leaves + 1, bool)
+        keep[[int(i) for i in leaf_ids if 0 < int(i) <= self.tree.n_leaves]] = True
+        return keep[self.fragments]
+
+    def mirror_mask(self, mask: np.ndarray) -> np.ndarray:
+        """The mask laid on the other half: through the fold when the session has one, else reflected about
+        the straight axis."""
+        if self.fold is not None:
+            return self.fold.mirror(mask.astype(np.uint8)) > 0
+        from biomorphic.pipeline.fold import reflect
+        return reflect(mask.astype(np.uint8), self.axis_x) > 0
+
+    def mirror_leaves(self, leaf_ids: list[int], min_fraction: float = 0.5, max_self_overlap: float = 0.25
+                      ) -> list[int]:
+        """The leaves of the mirror image of a set of leaves: fold the set's mask onto the other half and keep
+        every leaf with at least `min_fraction` of its area under it. This is how the mirror of a composite
+        is found: the composite as a whole, not part by part, so it works whether or not every part has a
+        twin of its own. Empty when the set straddles the axis (more than `max_self_overlap` of its area
+        folds back onto itself): such a composite is its own mirror and gets no second one."""
+        own = sorted({int(i) for i in leaf_ids})
+        mask = self.leaf_mask(own)
+        mirrored = self.mirror_mask(mask)
+        area = int(mask.sum())
+        if area == 0 or int((mask & mirrored).sum()) > float(max_self_overlap) * area:
+            return []
+        n = self.tree.n_leaves + 1
+        areas = np.bincount(self.fragments.ravel(), minlength=n).astype(np.float64)
+        under = np.bincount(self.fragments[mirrored].ravel(), minlength=n).astype(np.float64)
+        frac = under / np.maximum(areas, 1.0)
+        own_set = set(own)
+        return [int(i) for i in np.nonzero(frac >= float(min_fraction))[0] if i != 0 and int(i) not in own_set]
 
     # ---- fold ---------------------------------------------------------------------------
     @property
@@ -334,26 +353,28 @@ class Session:
             self._lab_mirror = self.fold.mirror(self.working_lab)
         return self._lab_mirror
 
-    def mirror_map(self, level_index: int) -> np.ndarray:
+    def mirror_map(self, level_index: int, apply_groups: bool = True) -> np.ndarray:
         """Region of every pixel's twin at this level: the other half folded on top (requires a fold)."""
-        data = self._level_data(level_index)
+        data = self._level_data(level_index, apply_groups)
         if "mirror_map" not in data:
             data["mirror_map"] = self.fold.mirror(data["label_map"])
         return data["mirror_map"]
 
     # ---- pairing ------------------------------------------------------------------------
-    def pairing(self, level_index: int) -> dict[str, Any]:
-        data = self._level_data(level_index)
+    def pairing(self, level_index: int, apply_groups: bool = True) -> dict[str, Any]:
+        """Sides and twins of the regions at a level; apply_groups=False pairs the level's own partition
+        (the components under a composite keep their own side and twin)."""
+        data = self._level_data(level_index, apply_groups)
         if "pairing" not in data:
             from biomorphic.pipeline import pairing as pairing_mod
             if self.fold is not None:
                 data["pairing"] = pairing_mod.pair_regions_fold(
-                    data["label_map"], self.mirror_map(level_index), self.working_lab, self.lab_mirror,
-                    self.regions(level_index), self.axis_x_at, self.fold.band_half_width,
-                    params=self.meta.get("params", {}))
+                    data["label_map"], self.mirror_map(level_index, apply_groups), self.working_lab,
+                    self.lab_mirror, self.regions(level_index, apply_groups), self.axis_x_at,
+                    self.fold.band_half_width, params=self.meta.get("params", {}))
             else:
                 data["pairing"] = pairing_mod.pair_regions(
-                    data["label_map"], self.axis_x, self.working_lab, self.regions(level_index),
+                    data["label_map"], self.axis_x, self.working_lab, self.regions(level_index, apply_groups),
                     params=self.meta.get("params", {}))
         return data["pairing"]
 
@@ -385,11 +406,15 @@ class Session:
         (self.path / "state.json").write_text(json.dumps(self.state, indent=1))
 
     # ---- tiles --------------------------------------------------------------------------
-    def cut_tile(self, level_index: int, region_id: int) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-        info = self.regions(level_index).get(int(region_id))
+    def cut_tile(self, level_index: int, region_id: int, apply_groups: bool = True
+                 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+        """RGBA tile of a region; apply_groups=False cuts the level's own region even where a group covers it
+        (the members of a composite are cut that way)."""
+        info = self.regions(level_index, apply_groups).get(int(region_id))
         if info is None:
             raise KeyError(f"no region {region_id} at level {level_index}")
-        return tile_utils.cut_tile(self.working_rgb, self.label_map(level_index), int(region_id), info.bbox)
+        return tile_utils.cut_tile(self.working_rgb, self.label_map(level_index, apply_groups), int(region_id),
+                                   info.bbox)
 
 
 # ----------------------------------------------------------------------------- writing helpers

@@ -108,7 +108,7 @@ All coordinates are in **working-copy pixel space** unless stated otherwise.
 
 **Region ids at a level** are tree node ids (the root of each leaf after the prefix of merges). They are stable across levels for regions that did not change, which lets the UI keep a selection while sliding.
 
-**Manual groups** (artist merges, `state.json`) are lists of leaf ids. At any level, every region that contains a leaf of a group is unioned into the group's region, whose id is `1_000_000 + group_index`. Groups never create boundaries.
+**Manual groups** (artist merges, `state.json`) are lists of leaf ids: a *composite* the artist made from adjacent parts. A group is **pinned**: at every level its region is exactly its leaves, id `1_000_000 + group_index`, and a level region that overlaps it keeps only its other leaves. So sliding coarser never swallows a composite and sliding finer never splits it. Groups never share a leaf (adding one that overlaps absorbs the old ones) and never create boundaries.
 
 ## Shared core API (`biomorphic/session.py`, `biomorphic/tiles.py`)
 
@@ -122,10 +122,13 @@ s.figure_mask, s.ink_mask   # HxW bool
 s.fragments                 # HxW int32
 s.levels                    # list of level dicts
 s.label_map(level_index, apply_groups=True) -> np.ndarray int32   # region ids per pixel, 0 = background
-s.regions(level_index) -> dict[int, RegionInfo]   # area, bbox (x,y,w,h), centroid (cx,cy), mean_lab, leaves (tuple of leaf ids)
+s.regions(level_index, apply_groups=True) -> dict[int, RegionInfo]   # area, bbox (x,y,w,h), centroid (cx,cy), mean_lab, leaves (tuple of leaf ids)
+s.leaf_to_region_no_groups(level_index)           # the level's own partition, groups ignored
+s.mirror_leaves(leaf_ids) -> [leaf ids]           # the mirror of a composite as a whole: fold its mask, take the leaves mostly under it
+                                                  # ([] when it straddles the axis and is its own mirror); straight reflection without a fold
 s.pairing(level_index) -> {"sides": {id: "L"|"R"|"axis"}, "pairs": [{"a","b","iou","dx","dy"}], "twin": {id: id}}
 s.add_group(leaf_ids) -> group_index ; s.remove_group(group_index) ; s.groups
-s.cut_tile(level_index, region_id) -> (rgba HxWx4 uint8, bbox)     # alpha is binary 0/255 == region mask
+s.cut_tile(level_index, region_id, apply_groups=True) -> (rgba HxWx4 uint8, bbox)   # alpha is binary 0/255 == region mask
 tiles.encode_png(rgba) -> bytes ; tiles.decode_png(bytes) -> rgba ; tiles.sha256(bytes) -> str
 ```
 
@@ -189,10 +192,13 @@ CREATE TABLE provenance(tile_id TEXT PRIMARY KEY REFERENCES tiles(id) ON DELETE 
                         working_angle_deg REAL,            -- rotation applied to deskew the working copy
                         user_merged INT, created_at TEXT);
 CREATE TABLE tags      (tile_id TEXT REFERENCES tiles(id) ON DELETE CASCADE, tag TEXT, created_at TEXT, PRIMARY KEY (tile_id, tag));
+CREATE TABLE tile_members(composite_id TEXT REFERENCES tiles(id) ON DELETE CASCADE,     -- a composite tile and
+                        member_id TEXT REFERENCES tiles(id) ON DELETE CASCADE, ordinal INT,   -- its component tiles
+                        PRIMARY KEY (composite_id, member_id));
 CREATE TRIGGER provenance_immutable BEFORE UPDATE ON provenance BEGIN SELECT RAISE(ABORT, 'provenance is immutable'); END;
 ```
 
-`Library` API (`db.py`): `open(dir)`, `save_tile(session, level, region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (writes PNG, sources + tiles + provenance rows, in one transaction; raises `TileExists` rather than overwrite a stored tile), `save_pair(session, level, a, b, *, iou=None) -> (TileRecord, TileRecord)` (both tiles plus the link, one transaction), `link_pair(a, b, iou)` (the only UPDATE the API issues, on `tiles`), `get(tile_id)`, `list_tiles(source_sha256=None)`, `tile_path(id)`, `tile_png_bytes(id)`, `add_tag/remove_tag/tags(id)`, `delete_tile(id)` (rows cascade, PNG removed, partner unlinked), `summary() -> {n_tiles, n_sources, dir}`, `provenance_is_immutable() -> bool` (probes an UPDATE inside a rolled-back savepoint; verify check 8). There is deliberately **no** method that updates provenance; the trigger enforces it at the database too.
+`Library` API (`db.py`): `open(dir)`, `save_tile(session, level, region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (writes PNG, sources + tiles + provenance rows, in one transaction; raises `TileExists` rather than overwrite a stored tile), `save_pair(session, level, a, b, *, iou=None) -> (TileRecord, TileRecord)` (both tiles plus the link, one transaction), `link_pair(a, b, iou)` (the only UPDATE the API issues, on `tiles`), `save_composite(session, level, group_region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (a manual group's region as a tile **plus** its components: the level-0 regions inside it, cut with groups ignored, each stored as an ordinary tile unless already there, and recorded in `tile_members`; one transaction), `members(tile_id) -> [TileRecord]`, `composites_of(tile_id) -> [ids]` (`TileRecord.members` / `.is_composite` carry the same), `get(tile_id)`, `list_tiles(source_sha256=None)`, `tile_path(id)`, `tile_png_bytes(id)`, `add_tag/remove_tag/tags(id)`, `delete_tile(id)` (rows cascade, PNG removed, partner unlinked), `summary() -> {n_tiles, n_sources, dir}`, `provenance_is_immutable() -> bool` (probes an UPDATE inside a rolled-back savepoint; verify check 8). There is deliberately **no** method that updates provenance; the trigger enforces it at the database too.
 
 `render.py`: `render(rgba, mode, palette=None) -> rgba` with modes `original | greyscale | outline | remap`; `mean_lab(rgba)`. `outline` keeps only ink-like pixels (dark and colourless) as black with the tile's alpha. `remap` takes a palette `[{"from": [L,a,b], "to": [L,a,b]}, ...]`, picks the entry nearest the tile's mean Lab and shifts every pixel by that delta. Pure functions; nothing here writes to disk.
 
@@ -211,13 +217,17 @@ GET  /api/levels/<i>/regions           {"<id>": {"area","bbox","centroid","side"
                                         twin/iou null when unpaired, saved_tile_id null unless that region is in the library,
                                         group_index null unless the region is a manual group
 POST /api/merge     {"level": i, "region_ids": [...], "mirror": true}   -> {"groups": [...], "created": [group_ids]}
+                                        mirror: the composite's mirror is found on the fold as a whole (Session.mirror_leaves),
+                                        so it exists whether or not each tapped part had a twin; none when it straddles the axis
 POST /api/unmerge   {"group_index": k}
-POST /api/save      {"level": i, "region_ids": [...]}                   -> {"tiles": [{"id","png_url","side","pair_tile_id"}]}
+POST /api/save      {"level": i, "region_ids": [...]}                   -> {"tiles": [{"id","png_url","side","pair_tile_id","members","composite"}]}
+                                        a group region is saved as a composite at level 0 whatever the slider shows (it is the same
+                                        region at every level) together with its component tiles; `saved_tile_id` reports it at every level
 GET  /api/library                      {"tiles": [...]}
 GET  /api/tiles/<id>.png?mode=original|greyscale|outline|remap
 ```
 
-UI behaviour: one slider = level index (shows the region count); tap a region to toggle it in the selection, its mirror twin co-selects (selected = cyan, twin = orange, axis-regions have no twin); **Merge** unions the tapped regions into one group and, when "mirror merges" is on and every tapped region has a twin, the twins into a second group; **Save** writes every selected region (twins included) to the library and links pairs; a tray shows saved tiles. Phone width first (375 px), large hit targets, no build step, no external assets.
+UI behaviour: one slider = level index (shows the region count); tap a region to toggle it in the selection, its mirror twin co-selects (selected = cyan, twin = orange, axis-regions have no twin); **paint** (toggle, on by default): a one-finger drag selects every part under the stroke (sampled between pointer events), a press that stays put is still a tap, so an overshoot is removed by tapping it; with paint off a drag scrolls / pinches as the browser likes; **Merge** unions the selected regions into one composite and, when "mirror merges" is on, its mirror composite (the parts under the composite folded across the axis) into a second group; **Save** writes every selected region (twins included) to the library, a composite with its component tiles, and links pairs; a tray shows saved tiles (a `composite · n parts` badge on composites). Phone width first (375 px), large hit targets, no build step, no external assets.
 
 Details as implemented: tapping an orange twin deselects the pair; the selection survives a level change for region ids that still exist; after Merge the new group is selected (its mirror group follows as the twin); **Unmerge** appears when a selected region or twin is a manual group and removes those groups; Save returns tiles that already exist instead of failing and links a lone twin to its partner's existing tile; every error is JSON `{"error": ...}` with a status (400 bad request, 404 unknown level/region/tile, 405 wrong method, 503 library unavailable, 501 render not implemented). Level PNGs are cached per (level, groups) and sent `Cache-Control: no-store`.
 
@@ -227,8 +237,8 @@ Stable ids and attributes for Playwright (`tests/test_ui_playwright.py`, `verify
 
 - `#stage` — the visible canvas; it shows the whole working image scaled to the width, so image px map to page px through its bounding box. Attributes: `data-selected` / `data-twins` (comma-separated region ids: tapped regions / their co-selected mirror twins), `data-level` (the level on screen; empty while one loads), `data-ready="1"` once the first level is drawn, `data-busy="1"` during a request.
 - `#slider` — range input over level indices. `ArrowLeft`/`ArrowRight` move it (focused or not), `Escape` clears the selection. `#count` is the region count at the shown level as a bare number (`data-approx="1"` while a level is still loading); `#cost`, `#level-idx`, `#level-max`.
-- `#btn-merge` (disabled unless ≥ 2 tapped regions), `#mirror-merges` (checkbox, checked by default), `#btn-unmerge` (hidden unless applicable), `#btn-save` (disabled when nothing is selected), `#btn-clear`.
-- `#tray` — one `.tile[data-id="<tile id>"]` child per saved tile, newest first, with an `img` from `/api/tiles/<id>.png` and a `.badge.pair` when linked; the empty-state text sits outside `#tray`, so `#tray.children.length` is the tile count. `#tray-count`, `#hdr-lib` (tile count, or "library unavailable"), `#hdr-file`, `#hdr-axis`, `#hdr-session`.
+- `#btn-merge` (disabled unless ≥ 2 tapped regions), `#mirror-merges` (checkbox, checked by default), `#paint-mode` (checkbox, checked by default; `#stage-wrap[data-paint="1"]` while on, `#stage[data-painting="1"]` during a stroke), `#btn-unmerge` (hidden unless applicable), `#btn-save` (disabled when nothing is selected), `#btn-clear`.
+- `#tray` — one `.tile[data-id="<tile id>"]` child per saved tile, newest first, with an `img` from `/api/tiles/<id>.png`, a `.badge.pair` when linked and a `.badge.composite` on a composite; the empty-state text sits outside `#tray`, so `#tray.children.length` is the tile count. `#tray-count`, `#hdr-lib` (tile count, or "library unavailable"), `#hdr-file`, `#hdr-axis`, `#hdr-session`.
 - `#toast` — status messages, shown with `data-show="1"` (hidden through `visibility: hidden`); after Save it reads `Saved N tile(s) to the library`. `#info` is the mono readout under the stage (part ids, area, IoU, "saved").
 
 ## Verify (`biomorphic/verify`)
