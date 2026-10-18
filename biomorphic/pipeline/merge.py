@@ -37,6 +37,7 @@ DEFAULTS = {
     "levels": 24,                 # number of slider levels
     "level_min_regions": 5,       # coarsest level has about this many regions
     "level0_max_ink_norm": 0.1,   # level 0 = after the leading merges whose border carries less ink than this
+    "merge_symmetric": True,      # mirror twins merge together (needs the fold's leaf pairing)
 }
 
 
@@ -245,12 +246,233 @@ def choose_levels(tree: MergeTree, stats: list, params: dict | None = None) -> l
             targets.append(int(round(r0 * (r_min / r0) ** (i / (n_levels - 1)))))
     levels: list[dict] = []
     seen: set[int] = set()
+    # a mirror-consistent tree may only be cut between unit merges (never between a merge and its twin's)
+    allowed = None
+    if stats and "unit_end" in stats[0]:
+        allowed = np.array([0] + [i + 1 for i, st in enumerate(stats) if st.get("unit_end", True)])
     for r in targets:
         r = max(r_min, min(r0, r))
         nm = tree.n_merges_for_regions(r)
+        if allowed is not None:
+            nm = int(allowed[np.argmin(np.abs(allowed - nm))])
         if nm in seen:
             continue
         seen.add(nm)
         levels.append({"index": len(levels), "n_merges": int(nm), "n_regions": int(n - nm),
                        "cost": round(tree.cost_at(nm), 6)})
     return levels
+
+
+# ----------------------------------------------------------------------------- mirror-consistent merging
+def build_merge_tree_symmetric(fragments: np.ndarray, ink_dist: np.ndarray, t0: float, axis_x: float,
+                               pairing: dict, params: dict | None = None) -> MergeResult:
+    """Merge hierarchy in which mirror twins merge together, so every level stays mirror-consistent.
+
+    Units: a twin pair (left region, right region), a central region, or an unpaired region. Two pairs merge
+    only when both sides are adjacent (left with left, right with right), at the mean of the two border costs,
+    as two consecutive merges with the same cost; a central region takes a pair only when it touches both
+    twins; a pair whose twins touch across the axis can close into one central region (cross-axis penalty);
+    an unpaired region joins whichever neighbour it borders. Merges that complete a unit merge are flagged
+    unit_end, and levels are only cut there (choose_levels). Whatever cannot merge symmetrically is joined
+    afterwards by the ordinary cost order.
+    """
+    p = {**DEFAULTS, **(params or {})}
+    regions, edges = build_rag(fragments, ink_dist, axis_x, float(p["merge_side_frac"]))
+    n = int(fragments.max())
+    figure_area = float(sum(r.area for r in regions.values()))
+    area_ref = max(1.0, figure_area * float(p["merge_area_ref_frac"]))
+    no_ink = float(p["level0_max_ink_norm"])
+    merges: list[list] = []
+    stats: list[dict] = []
+    state = {"prev": 0.0, "next_id": n + 1}
+
+    def ecost(a: int, b: int) -> tuple[float, dict]:
+        bl, isum = regions[a].nbrs[b]
+        return edge_cost(regions[a], regions[b], bl, isum, t0, area_ref, p)
+
+    def merge_regions(a: int, b: int, raw: float, info: dict | None, unit_end: bool) -> int:
+        ra, rb = regions[a], regions[b]
+        e = ra.nbrs.get(b, [0, 0.0])
+        new = Region(area=ra.area + rb.area, perimeter=ra.perimeter + rb.perimeter - 2 * int(e[0]),
+                     x0=min(ra.x0, rb.x0), y0=min(ra.y0, rb.y0), x1=max(ra.x1, rb.x1), y1=max(ra.y1, rb.y1),
+                     sx=ra.sx + rb.sx, sy=ra.sy + rb.sy, area_left=ra.area_left + rb.area_left,
+                     area_right=ra.area_right + rb.area_right)
+        new.side = side_of(new.area_left, new.area_right, float(p["merge_side_frac"]))
+        nid = state["next_id"]
+        state["next_id"] += 1
+        for c in set(ra.nbrs) | set(rb.nbrs):
+            if c in (a, b):
+                continue
+            ea, eb = ra.nbrs.get(c), rb.nbrs.get(c)
+            merged = [(ea[0] if ea else 0) + (eb[0] if eb else 0), (ea[1] if ea else 0.0) + (eb[1] if eb else 0.0)]
+            rc = regions[c]
+            rc.nbrs.pop(a, None)
+            rc.nbrs.pop(b, None)
+            rc.nbrs[nid] = merged
+            new.nbrs[c] = merged
+        ra.alive = rb.alive = False
+        ra.nbrs, rb.nbrs = {}, {}
+        regions[nid] = new
+        rec = max(float(raw), state["prev"])
+        state["prev"] = rec
+        merges.append([int(a), int(b), rec, int(nid)])
+        st = {"a": int(a), "b": int(b), "new": int(nid), "raw_cost": float(raw), "border_len": int(e[0]),
+              "unit_end": bool(unit_end)}
+        st.update({k: (float(v) if not isinstance(v, bool) else v) for k, v in info.items()} if info else
+                  {"ink_norm": 0.0, "embed": 0.0, "size": 0.0, "cross": False})
+        stats.append(st)
+        return nid
+
+    # units -------------------------------------------------------------------------------------
+    sides = {int(k): v for k, v in pairing.get("sides", {}).items()}
+    units: dict[int, dict] = {}
+    unit_of: dict[int, int] = {}
+    version: dict[int, int] = {}
+    done: set[int] = set()
+    uid_next = [0]
+
+    def new_unit(kind: str, members: tuple) -> int:
+        uid = uid_next[0]
+        uid_next[0] += 1
+        units[uid] = {"kind": kind, "m": members}
+        version[uid] = 0
+        for r in members:
+            unit_of[r] = uid
+        return uid
+
+    for pr in pairing.get("pairs", []):
+        a, b = int(pr["a"]), int(pr["b"])
+        if a in regions and b in regions and a not in unit_of and b not in unit_of:
+            left, right = (a, b) if sides.get(a) == "L" else (b, a)
+            new_unit("pair", (left, right))
+    for rid in regions:
+        if rid not in unit_of:
+            new_unit("axis" if sides.get(rid) == "axis" else "single", (rid,))
+
+    def plan(u: int, v: int) -> tuple[float, int, list, str] | None:
+        """(cost, phase, region merges, resulting kind) for merging unit u with v (u == v: close a pair)."""
+        U, V = units[u], units[v]
+        ku, kv = U["kind"], V["kind"]
+        if u == v:
+            if ku != "pair":
+                return None
+            a, b = U["m"]
+            if b not in regions[a].nbrs:
+                return None
+            c, i = ecost(a, b)
+            return c, int(i["ink_norm"] >= no_ink), [(a, b)], "axis"
+        if ku == "single" or kv == "single":
+            s_, o_ = (u, v) if ku == "single" else (v, u)
+            x = units[s_]["m"][0]
+            best = None
+            for m in units[o_]["m"]:
+                if m in regions[x].nbrs:
+                    c, i = ecost(x, m)
+                    if best is None or c < best[0]:
+                        best = (c, int(i["ink_norm"] >= no_ink), [(m, x)], units[o_]["kind"])
+            return best
+        if ku == "pair" and kv == "pair":
+            (al, ar), (bl, br) = U["m"], V["m"]
+            if bl not in regions[al].nbrs or br not in regions[ar].nbrs:
+                return None
+            c1, i1 = ecost(al, bl)
+            c2, i2 = ecost(ar, br)
+            return 0.5 * (c1 + c2), int(max(i1["ink_norm"], i2["ink_norm"]) >= no_ink), [(al, bl), (ar, br)], "pair"
+        if ku == "axis" and kv == "axis":
+            a, b = U["m"][0], V["m"][0]
+            if b not in regions[a].nbrs:
+                return None
+            c, i = ecost(a, b)
+            return c, int(i["ink_norm"] >= no_ink), [(a, b)], "axis"
+        ax_, pr_ = (u, v) if ku == "axis" else (v, u)
+        cen = units[ax_]["m"][0]
+        pl, prr = units[pr_]["m"]
+        if pl not in regions[cen].nbrs or prr not in regions[cen].nbrs:
+            return None
+        c1, i1 = ecost(cen, pl)
+        c2, i2 = ecost(cen, prr)
+        return 0.5 * (c1 + c2), int(max(i1["ink_norm"], i2["ink_norm"]) >= no_ink), [(cen, pl), ("new", prr)], "axis"
+
+    def neighbours(u: int) -> set[int]:
+        out = set()
+        for r in units[u]["m"]:
+            for c in regions[r].nbrs:
+                if c in unit_of and unit_of[c] != u:
+                    out.add(unit_of[c])
+        return out
+
+    heap: list = []
+
+    def push(u: int, v: int) -> None:
+        pl = plan(u, v)
+        if pl is not None:
+            cost, phase, _m, _k = pl
+            heapq.heappush(heap, (phase, cost, min(u, v), max(u, v), version[u], version[v]))
+
+    for u in list(units):
+        push(u, u)
+        for v in neighbours(u):
+            if v > u:
+                push(u, v)
+    while heap:
+        _phase, cost, u, v, vu, vv = heapq.heappop(heap)
+        if u in done or v in done or version.get(u) != vu or version.get(v) != vv:
+            continue
+        pl = plan(u, v)
+        if pl is None:
+            continue
+        c, _ph, steps, kind = pl
+        if abs(c - cost) > 1e-9:          # stale cost (a neighbour changed): re-queue with the current one
+            push(u, v)
+            continue
+        last = None
+        for k, (a, b) in enumerate(steps):
+            a = last if a == "new" else a
+            _c, info = ecost(a, b)
+            last = merge_regions(a, b, c, info, unit_end=(k == len(steps) - 1))
+        # the merged unit, from the regions that survive the merges
+        uk, vk = units[u]["kind"], units[v]["kind"]
+        if kind == "pair" and uk == "pair" and vk == "pair" and u != v:
+            members = (merges[-2][3], merges[-1][3])          # left merge first, then right
+        elif kind == "pair":                                   # an unpaired region joined one side of a pair
+            hl, hr = units[v if uk == "single" else u]["m"]
+            members = (last, hr) if hl in (merges[-1][0], merges[-1][1]) else (hl, last)
+        else:
+            members = (last,)
+        for w_ in (u, v):
+            done.add(w_)
+            for r in units[w_]["m"]:
+                unit_of.pop(r, None)
+        nu = new_unit(kind, members)
+        push(nu, nu)
+        for w_ in neighbours(nu):
+            push(nu, w_)
+    # whatever could not merge symmetrically: join by the ordinary cost order
+    alive = [rid for rid, r in regions.items() if r.alive]
+    n_disc = 0
+    if len(alive) > 1:
+        heap2 = []
+        for a in alive:
+            for b in regions[a].nbrs:
+                if b > a:
+                    c, i = ecost(a, b)
+                    heap2.append((c, a, b))
+        heapq.heapify(heap2)
+        while heap2:
+            c, a, b = heapq.heappop(heap2)
+            ra, rb = regions.get(a), regions.get(b)
+            if ra is None or rb is None or not ra.alive or not rb.alive or b not in ra.nbrs:
+                continue
+            c2, info = ecost(a, b)
+            nid = merge_regions(a, b, c2, info, unit_end=True)
+            for d in regions[nid].nbrs:
+                cc, _i = ecost(nid, d)
+                heapq.heappush(heap2, (cc, min(nid, d), max(nid, d)))
+        rest = [rid for rid, r in regions.items() if r.alive]
+        while len(rest) > 1:
+            nid = merge_regions(rest[0], rest[1], state["prev"], None, unit_end=True)
+            n_disc += 1
+            rest = [nid] + rest[2:]
+    tree = MergeTree(n, merges)
+    tree.validate()
+    return MergeResult(tree=tree, stats=stats, n_disconnected=n_disc)

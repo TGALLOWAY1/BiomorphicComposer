@@ -118,6 +118,50 @@ def rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(f, cv2.COLOR_RGB2LAB)
 
 
+def region_stats(label_map: np.ndarray, lab_image: np.ndarray,
+                 leaf_to_region: np.ndarray | None = None) -> dict[int, RegionInfo]:
+    """RegionInfo for every nonzero id of a label map (area, bbox, centroid, mean Lab, leaves).
+
+    leaf_to_region[leaf] gives each leaf's region; without it every region is its own leaf (a leaf map)."""
+    ids, inv = np.unique(label_map, return_inverse=True)
+    dense = inv.reshape(label_map.shape).astype(np.int32)
+    k = len(ids)
+    flat = dense.ravel()
+    area = np.bincount(flat, minlength=k)
+    h, w = label_map.shape
+    xs = np.tile(np.arange(w, dtype=np.float64), h)
+    ys = np.repeat(np.arange(h, dtype=np.float64), w)
+    sx = np.bincount(flat, weights=xs, minlength=k)
+    sy = np.bincount(flat, weights=ys, minlength=k)
+    labf = lab_image.reshape(-1, 3)
+    means = [np.bincount(flat, weights=labf[:, c].astype(np.float64), minlength=k) for c in range(3)]
+    bg = int(np.searchsorted(ids, 0)) if ids[0] == 0 else -1
+    # find_objects wants labels >= 1; shift dense so that background (if any) becomes 0
+    shifted = dense + 1 if bg < 0 else np.where(dense == bg, 0, np.where(dense > bg, dense, dense + 1))
+    objs = ndi.find_objects(shifted)
+    leaves_by_region: dict[int, list[int]] = {}
+    if leaf_to_region is not None:
+        for leaf in range(1, len(leaf_to_region)):
+            leaves_by_region.setdefault(int(leaf_to_region[leaf]), []).append(leaf)
+    regions: dict[int, RegionInfo] = {}
+    for di, rid in enumerate(ids.tolist()):
+        if rid == 0:
+            continue
+        a = int(area[di])
+        if a == 0:
+            continue
+        v = di if bg < 0 else (di if di < bg else di - 1)
+        sl = objs[v]
+        bbox = (int(sl[1].start), int(sl[0].start), int(sl[1].stop - sl[1].start), int(sl[0].stop - sl[0].start))
+        regions[int(rid)] = RegionInfo(
+            id=int(rid), area=a, bbox=bbox,
+            centroid=(float(sx[di] / a), float(sy[di] / a)),
+            mean_lab=tuple(float(m[di] / a) for m in means),
+            leaves=tuple(leaves_by_region.get(int(rid), ())) if leaf_to_region is not None else (int(rid),),
+        )
+    return regions
+
+
 # ----------------------------------------------------------------------------- session
 class Session:
     """Read side of a session directory plus the UI working state (manual groups)."""
@@ -143,6 +187,10 @@ class Session:
         self._lab: np.ndarray | None = None
         self._roots: dict[int, np.ndarray] = {}
         self._levels_cache: dict[tuple, dict[str, Any]] = {}
+        from biomorphic.pipeline.fold import Fold
+        self.fold = Fold.load(self.path)          # None for sessions written before the fold step
+        self._lab_mirror: np.ndarray | None = None
+        self._axis_curve: np.ndarray | None = None
 
     @classmethod
     def load(cls, path: Path | str) -> "Session":
@@ -260,56 +308,53 @@ class Session:
     # ---- region stats -------------------------------------------------------------------
     def regions(self, level_index: int) -> dict[int, RegionInfo]:
         data = self._level_data(level_index)
-        if "regions" in data:
-            return data["regions"]
-        lab = data["label_map"]
-        ids, inv = np.unique(lab, return_inverse=True)
-        dense = inv.reshape(lab.shape).astype(np.int32)
-        k = len(ids)
-        flat = dense.ravel()
-        area = np.bincount(flat, minlength=k)
-        h, w = lab.shape
-        xs = np.tile(np.arange(w, dtype=np.float64), h)
-        ys = np.repeat(np.arange(h, dtype=np.float64), w)
-        sx = np.bincount(flat, weights=xs, minlength=k)
-        sy = np.bincount(flat, weights=ys, minlength=k)
-        labf = self.working_lab.reshape(-1, 3)
-        means = [np.bincount(flat, weights=labf[:, c].astype(np.float64), minlength=k) for c in range(3)]
-        bg = int(np.searchsorted(ids, 0)) if ids[0] == 0 else -1
-        # find_objects wants labels >= 1; shift dense so that background (if any) becomes 0
-        shifted = dense + 1 if bg < 0 else np.where(dense == bg, 0, np.where(dense > bg, dense, dense + 1))
-        objs = ndi.find_objects(shifted)
-        l2r = data["leaf_to_region"]
-        leaves_by_region: dict[int, list[int]] = {}
-        for leaf in range(1, len(l2r)):
-            leaves_by_region.setdefault(int(l2r[leaf]), []).append(leaf)
-        regions: dict[int, RegionInfo] = {}
-        for di, rid in enumerate(ids.tolist()):
-            if rid == 0:
-                continue
-            a = int(area[di])
-            if a == 0:
-                continue
-            v = di if bg < 0 else (di if di < bg else di - 1)
-            sl = objs[v]
-            bbox = (int(sl[1].start), int(sl[0].start), int(sl[1].stop - sl[1].start), int(sl[0].stop - sl[0].start))
-            regions[int(rid)] = RegionInfo(
-                id=int(rid), area=a, bbox=bbox,
-                centroid=(float(sx[di] / a), float(sy[di] / a)),
-                mean_lab=tuple(float(m[di] / a) for m in means),
-                leaves=tuple(leaves_by_region.get(int(rid), ())),
-            )
-        data["regions"] = regions
-        return regions
+        if "regions" not in data:
+            data["regions"] = region_stats(data["label_map"], self.working_lab, data["leaf_to_region"])
+        return data["regions"]
+
+    # ---- fold ---------------------------------------------------------------------------
+    @property
+    def axis_curve(self) -> np.ndarray:
+        """(n, 2) array of (y, x): the local centre line (a straight vertical line without a fold)."""
+        if self._axis_curve is None:
+            if self.fold is not None:
+                self._axis_curve = self.fold.axis_curve(self.figure_mask)
+            else:
+                self._axis_curve = np.array([[0.0, self.axis_x], [float(self.height - 1), self.axis_x]])
+        return self._axis_curve
+
+    def axis_x_at(self, y: Any) -> np.ndarray:
+        c = self.axis_curve
+        return np.interp(np.asarray(y, dtype=np.float64), c[:, 0], c[:, 1])
+
+    @property
+    def lab_mirror(self) -> np.ndarray:
+        """Lab colour at every pixel's twin (requires a fold)."""
+        if self._lab_mirror is None:
+            self._lab_mirror = self.fold.mirror(self.working_lab)
+        return self._lab_mirror
+
+    def mirror_map(self, level_index: int) -> np.ndarray:
+        """Region of every pixel's twin at this level: the other half folded on top (requires a fold)."""
+        data = self._level_data(level_index)
+        if "mirror_map" not in data:
+            data["mirror_map"] = self.fold.mirror(data["label_map"])
+        return data["mirror_map"]
 
     # ---- pairing ------------------------------------------------------------------------
     def pairing(self, level_index: int) -> dict[str, Any]:
         data = self._level_data(level_index)
         if "pairing" not in data:
             from biomorphic.pipeline import pairing as pairing_mod
-            data["pairing"] = pairing_mod.pair_regions(
-                data["label_map"], self.axis_x, self.working_lab, self.regions(level_index),
-                params=self.meta.get("params", {}))
+            if self.fold is not None:
+                data["pairing"] = pairing_mod.pair_regions_fold(
+                    data["label_map"], self.mirror_map(level_index), self.working_lab, self.lab_mirror,
+                    self.regions(level_index), self.axis_x_at, self.fold.band_half_width,
+                    params=self.meta.get("params", {}))
+            else:
+                data["pairing"] = pairing_mod.pair_regions(
+                    data["label_map"], self.axis_x, self.working_lab, self.regions(level_index),
+                    params=self.meta.get("params", {}))
         return data["pairing"]
 
     # ---- manual groups ------------------------------------------------------------------

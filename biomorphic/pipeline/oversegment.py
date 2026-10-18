@@ -19,6 +19,8 @@ from skimage.segmentation import watershed
 
 DEFAULTS = {
     "cell_min_area": 30,            # ink-free components smaller than this (px) are not markers (speck floor)
+    "cell_min_radius_t0": 0.0,      # ... nor those no wider than a disk of radius this * t0 + 2 px (0 = off):
+                                    # slivers between a line and a marker rim or dark shading
     "extra_seeds": False,           # split large cells with extra seeds (their borders carry no ink)
     "extra_seed_min_area": 40000,   # cells at least this big (px) get extra seeds
     "extra_seed_spacing": 150,      # seed grid spacing (px) inside such cells
@@ -34,13 +36,18 @@ class OversegmentResult:
     n_stragglers: int         # figure pixels the watershed did not reach (assigned to the nearest label)
 
 
-def cell_markers(figure_mask: np.ndarray, ink_mask: np.ndarray, min_area: int) -> tuple[np.ndarray, int]:
-    """Consecutively labelled ink-free cells (4-connected) of at least min_area px."""
+def cell_markers(figure_mask: np.ndarray, ink_mask: np.ndarray, min_area: int,
+                 min_radius: float = 0.0) -> tuple[np.ndarray, int]:
+    """Consecutively labelled ink-free cells (4-connected) of at least min_area px (and, when min_radius > 0,
+    holding a disk of that radius)."""
     cells = (figure_mask & ~ink_mask).astype(np.uint8)
     n, labels, stats, _ = cv2.connectedComponentsWithStats(cells, connectivity=4)
     if n <= 1:
         return np.zeros(figure_mask.shape, np.int32), 0
     keep = stats[:, cv2.CC_STAT_AREA] >= int(min_area)
+    if min_radius > 0:
+        inscribed = cv2.distanceTransform(cells, cv2.DIST_L2, 5)
+        keep &= np.asarray(ndi.maximum(inscribed, labels, index=np.arange(n))) >= float(min_radius)
     keep[0] = False
     lut = np.zeros(n, np.int32)
     lut[keep] = np.arange(1, int(keep.sum()) + 1, dtype=np.int32)
@@ -108,11 +115,12 @@ def relabel_consecutive(labels: np.ndarray, figure_mask: np.ndarray) -> tuple[np
 
 
 def oversegment(figure_mask: np.ndarray, ink_mask: np.ndarray, ink_dist: np.ndarray,
-                params: dict | None = None) -> OversegmentResult:
+                params: dict | None = None, t0: float = 1.0) -> OversegmentResult:
     p = {**DEFAULTS, **(params or {})}
     figure = figure_mask.astype(bool)
     ink = ink_mask.astype(bool) & figure
-    markers, n_cells = cell_markers(figure, ink, int(p["cell_min_area"]))
+    k = float(p["cell_min_radius_t0"])
+    markers, n_cells = cell_markers(figure, ink, int(p["cell_min_area"]), k * float(t0) + 2.0 if k > 0 else 0.0)
     n_markers = n_cells
     if p.get("extra_seeds") and n_cells:
         markers, n_markers = add_extra_seeds(markers, n_cells, int(p["extra_seed_min_area"]),
