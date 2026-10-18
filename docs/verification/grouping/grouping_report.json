@@ -1,6 +1,7 @@
 {
  "summary": {
   "n_pieces": 30,
+  "n_placed": 28,
   "n_leaves_total": 213,
   "scale": 3.0288,
   "scale_info": {
@@ -9,84 +10,78 @@
    "first_median": 2.9683
   },
   "confident": {
-   "n": 19,
+   "n": 17,
    "chunk_size": {
     "min": 1,
     "median": 4.0,
-    "max": 37,
+    "max": 15,
     "histogram": {
-     "1": 4,
+     "1": 5,
      "2": 3,
-     "4": 3,
-     "7": 3,
+     "4": 4,
+     "5": 1,
+     "7": 1,
      "9": 1,
-     "10": 1,
-     "14": 1,
-     "16": 1,
-     "25": 1,
-     "37": 1
+     "11": 1,
+     "15": 1
     }
    },
-   "one_region_pieces": 9,
+   "one_region_pieces": 8,
    "single_level": {
-    "taps": 128,
-    "gestures": 138,
+    "taps": 64,
+    "gestures": 73,
     "median_gestures": 3.0,
-    "max_gestures": 38
+    "max_gestures": 16
    },
    "mixed": {
-    "gestures": 134,
+    "gestures": 94,
     "median_gestures": 4.0,
-    "max_gestures": 32,
-    "gestures_with_mirror_coselect": 133
+    "max_gestures": 22,
+    "gestures_with_mirror_coselect": 93
    }
   },
   "all": {
-   "n": 30,
+   "n": 28,
    "chunk_size": {
     "min": 1,
     "median": 4.0,
-    "max": 37,
+    "max": 15,
     "histogram": {
      "1": 6,
-     "2": 3,
-     "3": 1,
-     "4": 6,
+     "2": 6,
+     "4": 7,
      "5": 2,
-     "7": 3,
+     "6": 1,
+     "7": 1,
      "9": 1,
-     "10": 2,
+     "11": 2,
      "13": 1,
-     "14": 1,
-     "16": 1,
-     "17": 1,
-     "25": 1,
-     "37": 1
+     "15": 1
     }
    },
-   "one_region_pieces": 13,
+   "one_region_pieces": 11,
    "single_level": {
-    "taps": 178,
-    "gestures": 195,
-    "median_gestures": 3.5,
-    "max_gestures": 38
+    "taps": 105,
+    "gestures": 122,
+    "median_gestures": 3.0,
+    "max_gestures": 16
    },
    "mixed": {
-    "gestures": 210,
+    "gestures": 172,
     "median_gestures": 4.0,
-    "max_gestures": 32,
-    "gestures_with_mirror_coselect": 208
+    "max_gestures": 24,
+    "gestures_with_mirror_coselect": 170
    }
   },
   "uncertain": [
    "A2",
+   "A3",
    "A4",
    "B3-T",
-   "B4-L",
    "B5-L",
    "B5-R",
-   "C1",
    "C7",
+   "D4-B",
    "E3",
    "E4-B",
    "E5"
@@ -98,16 +93,12 @@
     1.6
    ]
   },
-  "duplicate_targets": [
-   [
-    "B5-L",
-    "B5-R"
-   ]
-  ],
-  "unplaced": [],
-  "placed_by_twin": [
+  "duplicate_targets": [],
+  "unplaced": [
+   "D1",
    "D7"
   ],
+  "placed_by_twin": [],
   "mirror_pairs": [
    {
     "a": "C3",
@@ -124,13 +115,13 @@
    "A2",
    "A3",
    "A4",
+   "B1",
    "B2",
    "B3-T",
    "B4-L",
    "B4-R",
    "B5-L",
    "B5-R",
-   "C1",
    "C2",
    "C6",
    "C7",
@@ -349,103 +340,67 @@
    "label": "A3",
    "piece_index": 2,
    "leaves": [
-    150,
-    151,
-    152,
-    153,
-    155,
-    157,
-    161,
-    163,
-    165,
     166,
-    167,
     168,
-    169,
-    171,
     172,
     174,
-    176,
-    178,
     184,
-    191,
-    194,
-    195,
-    197,
-    198,
-    201
+    189,
+    192,
+    199,
+    210,
+    211,
+    212
    ],
-   "n_leaves": 25,
-   "leaf_iou": 0.7745,
-   "anchor_level": 12,
-   "anchor_region": 396,
-   "anchor_score": 0.6855,
+   "n_leaves": 11,
+   "leaf_iou": 0.4322,
+   "anchor_level": 2,
+   "anchor_region": 248,
+   "anchor_score": 0.3078,
    "mirrored": false,
-   "iterations": 2,
-   "settled": true,
-   "area_ratio": 0.911,
+   "iterations": 4,
+   "settled": false,
+   "area_ratio": 0.764,
    "placed_by": "anchor",
-   "confident": true,
-   "area_px": 193944,
+   "confident": false,
+   "area_px": 162552,
    "single": {
-    "level": 2,
-    "n_regions": 154,
+    "level": 0,
+    "n_regions": 213,
     "regions": [
-     150,
-     151,
-     152,
-     153,
-     155,
-     161,
      166,
-     167,
-     171,
+     168,
      172,
      174,
-     176,
      184,
-     191,
-     194,
-     195,
-     197,
-     198,
-     201,
-     229,
-     240,
-     247
+     189,
+     192,
+     199,
+     210,
+     211,
+     212
     ],
-    "taps": 22,
+    "taps": 11,
     "merges": 1,
-    "gestures": 23
+    "gestures": 12
    },
    "mixed": {
     "steps": [
      {
-      "level": 10,
-      "n_regions": 43,
+      "level": 8,
+      "n_regions": 59,
       "regions": [
-       379
+       355
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
      },
      {
-      "level": 8,
-      "n_regions": 59,
-      "regions": [
-       354,
-       355
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
       "level": 6,
       "n_regions": 81,
       "regions": [
-       295
+       192
       ],
       "taps": 1,
       "merges": 1,
@@ -455,18 +410,27 @@
       "level": 5,
       "n_regions": 95,
       "regions": [
-       303,
-       304
+       166
       ],
-      "taps": 2,
+      "taps": 1,
       "merges": 1,
-      "gestures": 3
+      "gestures": 2
+     },
+     {
+      "level": 4,
+      "n_regions": 111,
+      "regions": [
+       199
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
      },
      {
       "level": 3,
       "n_regions": 131,
       "regions": [
-       152
+       212
       ],
       "taps": 1,
       "merges": 1,
@@ -476,30 +440,49 @@
       "level": 2,
       "n_regions": 154,
       "regions": [
-       153,
-       155
+       184
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 1,
+      "n_regions": 181,
+      "regions": [
+       168,
+       211
+      ],
+      "taps": 2,
+      "merges": 1,
+      "gestures": 3
+     },
+     {
+      "level": 0,
+      "n_regions": 213,
+      "regions": [
+       189,
+       210
       ],
       "taps": 2,
       "merges": 1,
       "gestures": 3
      }
     ],
-    "taps": 9,
-    "merges": 5,
-    "level_changes": 5,
-    "gestures": 19
+    "taps": 10,
+    "merges": 7,
+    "level_changes": 7,
+    "gestures": 24
    },
    "feasible_levels": [
-    0,
-    1,
-    2
+    0
    ],
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 25,
-    "1": 23,
-    "2": 22,
+    "0": 11,
+    "1": null,
+    "2": null,
     "3": null,
     "4": null,
     "5": null,
@@ -528,84 +511,49 @@
    "piece_index": 3,
    "leaves": [
     14,
-    20,
-    26,
-    27,
-    32
+    20
    ],
-   "n_leaves": 5,
-   "leaf_iou": 0.6238,
+   "n_leaves": 2,
+   "leaf_iou": 0.6378,
    "anchor_level": 0,
    "anchor_region": 20,
    "anchor_score": 0.6593,
    "mirrored": true,
    "iterations": 1,
    "settled": true,
-   "area_ratio": 0.561,
+   "area_ratio": 0.41,
    "placed_by": "anchor",
    "confident": false,
-   "area_px": 22815,
+   "area_px": 16652,
    "single": {
     "level": 1,
     "n_regions": 181,
     "regions": [
      14,
-     20,
-     26,
-     27,
-     32
+     20
     ],
-    "taps": 5,
+    "taps": 2,
     "merges": 1,
-    "gestures": 6
+    "gestures": 3
    },
    "mixed": {
     "steps": [
      {
-      "level": 7,
-      "n_regions": 69,
-      "regions": [
-       250
-      ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
-     },
-     {
-      "level": 5,
-      "n_regions": 95,
-      "regions": [
-       27
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 3,
-      "n_regions": 131,
-      "regions": [
-       26
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
       "level": 1,
       "n_regions": 181,
       "regions": [
-       14
+       14,
+       20
       ],
-      "taps": 1,
+      "taps": 2,
       "merges": 1,
-      "gestures": 2
+      "gestures": 3
      }
     ],
-    "taps": 4,
-    "merges": 3,
-    "level_changes": 3,
-    "gestures": 10
+    "taps": 2,
+    "merges": 1,
+    "level_changes": 0,
+    "gestures": 3
    },
    "feasible_levels": [
     0,
@@ -614,8 +562,8 @@
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 5,
-    "1": 5,
+    "0": 2,
+    "1": 2,
     "2": null,
     "3": null,
     "4": null,
@@ -644,117 +592,6 @@
    "label": "B1",
    "piece_index": 4,
    "leaves": [
-    115,
-    128,
-    129,
-    149,
-    152,
-    153,
-    155
-   ],
-   "n_leaves": 7,
-   "leaf_iou": 0.8195,
-   "anchor_level": 11,
-   "anchor_region": 389,
-   "anchor_score": 0.8183,
-   "mirrored": true,
-   "iterations": 1,
-   "settled": true,
-   "area_ratio": 1.137,
-   "placed_by": "anchor",
-   "confident": true,
-   "area_px": 132522,
-   "single": {
-    "level": 18,
-    "n_regions": 11,
-    "regions": [
-     389
-    ],
-    "taps": 1,
-    "merges": 0,
-    "gestures": 1
-   },
-   "mixed": {
-    "steps": [
-     {
-      "level": 18,
-      "n_regions": 11,
-      "regions": [
-       389
-      ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
-     }
-    ],
-    "taps": 1,
-    "merges": 0,
-    "level_changes": 0,
-    "gestures": 1
-   },
-   "feasible_levels": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18
-   ],
-   "one_region_levels": [
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18
-   ],
-   "one_region": true,
-   "per_level_taps": {
-    "0": 7,
-    "1": 7,
-    "2": 7,
-    "3": 5,
-    "4": 4,
-    "5": 4,
-    "6": 4,
-    "7": 4,
-    "8": 4,
-    "9": 3,
-    "10": 3,
-    "11": 1,
-    "12": 1,
-    "13": 1,
-    "14": 1,
-    "15": 1,
-    "16": 1,
-    "17": 1,
-    "18": 1,
-    "19": null,
-    "20": null,
-    "21": null,
-    "22": null,
-    "23": null
-   }
-  },
-  {
-   "label": "B2",
-   "piece_index": 5,
-   "leaves": [
     134,
     137,
     138,
@@ -766,14 +603,14 @@
     160
    ],
    "n_leaves": 9,
-   "leaf_iou": 0.7857,
+   "leaf_iou": 0.7832,
    "anchor_level": 11,
    "anchor_region": 386,
-   "anchor_score": 0.7818,
+   "anchor_score": 0.7798,
    "mirrored": true,
    "iterations": 1,
    "settled": true,
-   "area_ratio": 0.888,
+   "area_ratio": 0.92,
    "placed_by": "anchor",
    "confident": true,
    "area_px": 107187,
@@ -840,6 +677,167 @@
    "one_region": false,
    "per_level_taps": {
     "0": 9,
+    "1": null,
+    "2": null,
+    "3": null,
+    "4": null,
+    "5": null,
+    "6": null,
+    "7": null,
+    "8": null,
+    "9": null,
+    "10": null,
+    "11": null,
+    "12": null,
+    "13": null,
+    "14": null,
+    "15": null,
+    "16": null,
+    "17": null,
+    "18": null,
+    "19": null,
+    "20": null,
+    "21": null,
+    "22": null,
+    "23": null
+   }
+  },
+  {
+   "label": "B2",
+   "piece_index": 5,
+   "leaves": [
+    135,
+    139,
+    141,
+    147,
+    156,
+    162,
+    164,
+    177,
+    179,
+    180,
+    185
+   ],
+   "n_leaves": 11,
+   "leaf_iou": 0.7851,
+   "anchor_level": 11,
+   "anchor_region": 387,
+   "anchor_score": 0.7642,
+   "mirrored": true,
+   "iterations": 4,
+   "settled": true,
+   "area_ratio": 0.954,
+   "placed_by": "anchor",
+   "confident": true,
+   "area_px": 115191,
+   "single": {
+    "level": 0,
+    "n_regions": 213,
+    "regions": [
+     135,
+     139,
+     141,
+     147,
+     156,
+     162,
+     164,
+     177,
+     179,
+     180,
+     185
+    ],
+    "taps": 11,
+    "merges": 1,
+    "gestures": 12
+   },
+   "mixed": {
+    "steps": [
+     {
+      "level": 10,
+      "n_regions": 43,
+      "regions": [
+       351
+      ],
+      "taps": 1,
+      "merges": 0,
+      "gestures": 1
+     },
+     {
+      "level": 8,
+      "n_regions": 59,
+      "regions": [
+       135
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 4,
+      "n_regions": 111,
+      "regions": [
+       139,
+       162,
+       164,
+       179
+      ],
+      "taps": 4,
+      "merges": 1,
+      "gestures": 5
+     },
+     {
+      "level": 3,
+      "n_regions": 131,
+      "regions": [
+       141
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 2,
+      "n_regions": 154,
+      "regions": [
+       185
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 1,
+      "n_regions": 181,
+      "regions": [
+       177
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 0,
+      "n_regions": 213,
+      "regions": [
+       180
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     }
+    ],
+    "taps": 10,
+    "merges": 6,
+    "level_changes": 6,
+    "gestures": 22
+   },
+   "feasible_levels": [
+    0
+   ],
+   "one_region_levels": [],
+   "one_region": false,
+   "per_level_taps": {
+    "0": 11,
     "1": null,
     "2": null,
     "3": null,
@@ -973,69 +971,65 @@
    "label": "B3-T",
    "piece_index": 6,
    "leaves": [
-    190,
-    191,
-    192,
-    193,
-    194,
-    195,
-    197,
-    198,
-    201,
-    204
+    34,
+    39,
+    41,
+    42,
+    44,
+    48
    ],
-   "n_leaves": 10,
-   "leaf_iou": 0.6964,
-   "anchor_level": 14,
-   "anchor_region": 403,
-   "anchor_score": 0.6615,
-   "mirrored": false,
-   "iterations": 2,
+   "n_leaves": 6,
+   "leaf_iou": 0.6652,
+   "anchor_level": 2,
+   "anchor_region": 244,
+   "anchor_score": 0.5715,
+   "mirrored": true,
+   "iterations": 3,
    "settled": true,
-   "area_ratio": 0.844,
+   "area_ratio": 1.001,
    "placed_by": "anchor",
    "confident": false,
-   "area_px": 61812,
+   "area_px": 73350,
    "single": {
-    "level": 6,
-    "n_regions": 81,
+    "level": 5,
+    "n_regions": 95,
     "regions": [
-     192,
-     204,
-     332,
-     333
+     41,
+     42,
+     283
     ],
-    "taps": 4,
+    "taps": 3,
     "merges": 1,
-    "gestures": 5
+    "gestures": 4
    },
    "mixed": {
     "steps": [
      {
-      "level": 13,
-      "n_regions": 26,
+      "level": 7,
+      "n_regions": 69,
       "regions": [
-       357
+       41,
+       42
       ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
+      "taps": 2,
+      "merges": 1,
+      "gestures": 3
      },
      {
-      "level": 6,
-      "n_regions": 81,
+      "level": 5,
+      "n_regions": 95,
       "regions": [
-       192
+       283
       ],
       "taps": 1,
       "merges": 1,
       "gestures": 2
      }
     ],
-    "taps": 2,
-    "merges": 1,
+    "taps": 3,
+    "merges": 2,
     "level_changes": 1,
-    "gestures": 4
+    "gestures": 6
    },
    "feasible_levels": [
     0,
@@ -1043,19 +1037,18 @@
     2,
     3,
     4,
-    5,
-    6
+    5
    ],
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 10,
-    "1": 10,
-    "2": 10,
-    "3": 10,
-    "4": 6,
-    "5": 6,
-    "6": 4,
+    "0": 6,
+    "1": 4,
+    "2": 4,
+    "3": 3,
+    "4": 3,
+    "5": 3,
+    "6": null,
     "7": null,
     "8": null,
     "9": null,
@@ -1079,93 +1072,87 @@
    "label": "B4-L",
    "piece_index": 7,
    "leaves": [
-    162,
-    164,
-    177,
-    185
+    128
    ],
-   "n_leaves": 4,
-   "leaf_iou": 0.5012,
-   "anchor_level": 5,
-   "anchor_region": 331,
-   "anchor_score": 0.7,
+   "n_leaves": 1,
+   "leaf_iou": 0.7003,
+   "anchor_level": 0,
+   "anchor_region": 128,
+   "anchor_score": 0.7003,
    "mirrored": false,
-   "iterations": 2,
+   "iterations": 1,
    "settled": true,
-   "area_ratio": 0.264,
+   "area_ratio": 0.66,
    "placed_by": "anchor",
-   "confident": false,
-   "area_px": 8505,
+   "confident": true,
+   "area_px": 21296,
    "single": {
-    "level": 1,
-    "n_regions": 181,
+    "level": 10,
+    "n_regions": 43,
     "regions": [
-     162,
-     164,
-     177,
-     185
+     128
     ],
-    "taps": 4,
-    "merges": 1,
-    "gestures": 5
+    "taps": 1,
+    "merges": 0,
+    "gestures": 1
    },
    "mixed": {
     "steps": [
      {
-      "level": 4,
-      "n_regions": 111,
+      "level": 10,
+      "n_regions": 43,
       "regions": [
-       162,
-       164
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
-      "level": 2,
-      "n_regions": 154,
-      "regions": [
-       185
+       128
       ],
       "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 1,
-      "n_regions": 181,
-      "regions": [
-       177
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
+      "merges": 0,
+      "gestures": 1
      }
     ],
-    "taps": 4,
-    "merges": 3,
-    "level_changes": 2,
-    "gestures": 9
+    "taps": 1,
+    "merges": 0,
+    "level_changes": 0,
+    "gestures": 1
    },
    "feasible_levels": [
     0,
-    1
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
    ],
-   "one_region_levels": [],
-   "one_region": false,
+   "one_region_levels": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "one_region": true,
    "per_level_taps": {
-    "0": 4,
-    "1": 4,
-    "2": null,
-    "3": null,
-    "4": null,
-    "5": null,
-    "6": null,
-    "7": null,
-    "8": null,
-    "9": null,
-    "10": null,
+    "0": 1,
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 1,
+    "7": 1,
+    "8": 1,
+    "9": 1,
+    "10": 1,
     "11": null,
     "12": null,
     "13": null,
@@ -1362,60 +1349,69 @@
    "label": "B5-R",
    "piece_index": 10,
    "leaves": [
-    12
+    176,
+    178
    ],
-   "n_leaves": 1,
-   "leaf_iou": 0.7875,
-   "anchor_level": 2,
-   "anchor_region": 251,
-   "anchor_score": 0.7817,
+   "n_leaves": 2,
+   "leaf_iou": 0.7736,
+   "anchor_level": 0,
+   "anchor_region": 176,
+   "anchor_score": 0.7566,
    "mirrored": false,
    "iterations": 1,
    "settled": true,
-   "area_ratio": 1.677,
+   "area_ratio": 0.498,
    "placed_by": "anchor",
    "confident": false,
-   "area_px": 37680,
+   "area_px": 11187,
    "single": {
     "level": 1,
     "n_regions": 181,
     "regions": [
-     12
+     176,
+     178
     ],
-    "taps": 1,
-    "merges": 0,
-    "gestures": 1
+    "taps": 2,
+    "merges": 1,
+    "gestures": 3
    },
    "mixed": {
     "steps": [
      {
-      "level": 1,
-      "n_regions": 181,
+      "level": 6,
+      "n_regions": 81,
       "regions": [
-       12
+       176
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
+     },
+     {
+      "level": 1,
+      "n_regions": 181,
+      "regions": [
+       178
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
      }
     ],
-    "taps": 1,
-    "merges": 0,
-    "level_changes": 0,
-    "gestures": 1
+    "taps": 2,
+    "merges": 1,
+    "level_changes": 1,
+    "gestures": 4
    },
    "feasible_levels": [
     0,
     1
    ],
-   "one_region_levels": [
-    0,
-    1
-   ],
-   "one_region": true,
+   "one_region_levels": [],
+   "one_region": false,
    "per_level_taps": {
-    "0": 1,
-    "1": 1,
+    "0": 2,
+    "1": 2,
     "2": null,
     "3": null,
     "4": null,
@@ -1444,100 +1440,76 @@
    "label": "C1",
    "piece_index": 13,
    "leaves": [
-    15,
-    18,
-    19,
-    21,
-    25,
-    28,
-    29,
-    33,
-    36,
-    37,
-    45,
-    50,
-    56,
-    57,
-    61,
-    62,
-    63
+    99,
+    100,
+    102,
+    107,
+    110,
+    116,
+    120,
+    121,
+    123,
+    124,
+    131,
+    136,
+    140,
+    148,
+    170
    ],
-   "n_leaves": 17,
-   "leaf_iou": 0.6376,
-   "anchor_level": 0,
-   "anchor_region": 33,
-   "anchor_score": 0.6401,
+   "n_leaves": 15,
+   "leaf_iou": 0.8643,
+   "anchor_level": 6,
+   "anchor_region": 278,
+   "anchor_score": 0.5802,
    "mirrored": false,
-   "iterations": 4,
-   "settled": false,
-   "area_ratio": 0.804,
+   "iterations": 3,
+   "settled": true,
+   "area_ratio": 0.955,
    "placed_by": "anchor",
-   "confident": false,
-   "area_px": 133139,
+   "confident": true,
+   "area_px": 158220,
    "single": {
     "level": 0,
     "n_regions": 213,
     "regions": [
-     15,
-     18,
-     19,
-     21,
-     25,
-     28,
-     29,
-     33,
-     36,
-     37,
-     45,
-     50,
-     56,
-     57,
-     61,
-     62,
-     63
+     99,
+     100,
+     102,
+     107,
+     110,
+     116,
+     120,
+     121,
+     123,
+     124,
+     131,
+     136,
+     140,
+     148,
+     170
     ],
-    "taps": 17,
+    "taps": 15,
     "merges": 1,
-    "gestures": 18
+    "gestures": 16
    },
    "mixed": {
     "steps": [
      {
-      "level": 9,
-      "n_regions": 49,
+      "level": 11,
+      "n_regions": 36,
       "regions": [
-       33,
-       341
+       110,
+       278
       ],
       "taps": 2,
       "merges": 1,
       "gestures": 3
      },
      {
-      "level": 8,
-      "n_regions": 59,
-      "regions": [
-       346
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 7,
-      "n_regions": 69,
-      "regions": [
-       19
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
       "level": 4,
       "n_regions": 111,
       "regions": [
-       255
+       100
       ],
       "taps": 1,
       "merges": 1,
@@ -1547,17 +1519,29 @@
       "level": 3,
       "n_regions": 131,
       "regions": [
-       63
+       131,
+       148,
+       277
+      ],
+      "taps": 3,
+      "merges": 1,
+      "gestures": 4
+     },
+     {
+      "level": 2,
+      "n_regions": 154,
+      "regions": [
+       107
       ],
       "taps": 1,
       "merges": 1,
       "gestures": 2
      },
      {
-      "level": 2,
-      "n_regions": 154,
+      "level": 1,
+      "n_regions": 181,
       "regions": [
-       259
+       102
       ],
       "taps": 1,
       "merges": 1,
@@ -1567,17 +1551,17 @@
       "level": 0,
       "n_regions": 213,
       "regions": [
-       36
+       99
       ],
       "taps": 1,
       "merges": 1,
       "gestures": 2
      }
     ],
-    "taps": 8,
-    "merges": 7,
-    "level_changes": 6,
-    "gestures": 21
+    "taps": 9,
+    "merges": 6,
+    "level_changes": 5,
+    "gestures": 20
    },
    "feasible_levels": [
     0
@@ -1585,7 +1569,7 @@
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 17,
+    "0": 15,
     "1": null,
     "2": null,
     "3": null,
@@ -1615,85 +1599,76 @@
    "label": "C2",
    "piece_index": 14,
    "leaves": [
-    96,
-    98,
-    113,
-    114,
-    117,
-    130,
-    132,
-    133,
-    145,
-    147
+    29,
+    33,
+    40,
+    47,
+    54
    ],
-   "n_leaves": 10,
-   "leaf_iou": 0.7512,
-   "anchor_level": 8,
-   "anchor_region": 367,
-   "anchor_score": 0.693,
+   "n_leaves": 5,
+   "leaf_iou": 0.7211,
+   "anchor_level": 10,
+   "anchor_region": 380,
+   "anchor_score": 0.6893,
    "mirrored": true,
-   "iterations": 2,
+   "iterations": 1,
    "settled": true,
-   "area_ratio": 0.798,
+   "area_ratio": 0.833,
    "placed_by": "anchor",
    "confident": true,
-   "area_px": 80415,
+   "area_px": 83932,
    "single": {
     "level": 0,
     "n_regions": 213,
     "regions": [
-     96,
-     98,
-     113,
-     114,
-     117,
-     130,
-     132,
-     133,
-     145,
-     147
+     29,
+     33,
+     40,
+     47,
+     54
     ],
-    "taps": 10,
+    "taps": 5,
     "merges": 1,
-    "gestures": 11
+    "gestures": 6
    },
    "mixed": {
     "steps": [
      {
-      "level": 15,
-      "n_regions": 19,
+      "level": 14,
+      "n_regions": 23,
       "regions": [
-       367
+       380
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
      },
      {
-      "level": 6,
-      "n_regions": 81,
+      "level": 5,
+      "n_regions": 95,
       "regions": [
-       147
+       29,
+       40
       ],
-      "taps": 1,
+      "taps": 2,
       "merges": 1,
-      "gestures": 2
+      "gestures": 3
      },
      {
       "level": 0,
       "n_regions": 213,
       "regions": [
-       117
+       47
       ],
       "taps": 1,
       "merges": 1,
       "gestures": 2
      }
     ],
-    "taps": 3,
+    "taps": 4,
     "merges": 2,
     "level_changes": 2,
-    "gestures": 7
+    "gestures": 8
    },
    "feasible_levels": [
     0
@@ -1701,7 +1676,7 @@
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 10,
+    "0": 5,
     "1": null,
     "2": null,
     "3": null,
@@ -2307,353 +2282,73 @@
    "label": "C7",
    "piece_index": 20,
    "leaves": [
-    91,
-    95,
-    103,
-    118,
-    122,
-    125,
-    126,
-    127,
-    131,
-    134,
-    142,
-    144,
-    158
+    119,
+    154,
+    183,
+    188
    ],
-   "n_leaves": 13,
-   "leaf_iou": 0.5757,
-   "anchor_level": 8,
-   "anchor_region": 366,
-   "anchor_score": 0.7083,
-   "mirrored": true,
-   "iterations": 2,
+   "n_leaves": 4,
+   "leaf_iou": 0.5933,
+   "anchor_level": 1,
+   "anchor_region": 230,
+   "anchor_score": 0.4866,
+   "mirrored": false,
+   "iterations": 1,
    "settled": true,
-   "area_ratio": 0.616,
+   "area_ratio": 0.556,
    "placed_by": "anchor",
    "confident": false,
-   "area_px": 102285,
-   "single": {
-    "level": 2,
-    "n_regions": 154,
-    "regions": [
-     91,
-     103,
-     122,
-     131,
-     134,
-     142,
-     144,
-     158,
-     241
-    ],
-    "taps": 9,
-    "merges": 1,
-    "gestures": 10
-   },
-   "mixed": {
-    "steps": [
-     {
-      "level": 15,
-      "n_regions": 19,
-      "regions": [
-       366
-      ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
-     },
-     {
-      "level": 10,
-      "n_regions": 43,
-      "regions": [
-       350
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 8,
-      "n_regions": 59,
-      "regions": [
-       134
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 3,
-      "n_regions": 131,
-      "regions": [
-       131
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 2,
-      "n_regions": 154,
-      "regions": [
-       91
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     }
-    ],
-    "taps": 5,
-    "merges": 4,
-    "level_changes": 4,
-    "gestures": 13
-   },
-   "feasible_levels": [
-    0,
-    1,
-    2
-   ],
-   "one_region_levels": [],
-   "one_region": false,
-   "per_level_taps": {
-    "0": 13,
-    "1": 9,
-    "2": 9,
-    "3": null,
-    "4": null,
-    "5": null,
-    "6": null,
-    "7": null,
-    "8": null,
-    "9": null,
-    "10": null,
-    "11": null,
-    "12": null,
-    "13": null,
-    "14": null,
-    "15": null,
-    "16": null,
-    "17": null,
-    "18": null,
-    "19": null,
-    "20": null,
-    "21": null,
-    "22": null,
-    "23": null
-   }
-  },
-  {
-   "label": "D1",
-   "piece_index": 24,
-   "leaves": [
-    89,
-    92,
-    101,
-    104,
-    105,
-    108,
-    109,
-    111,
-    119,
-    135,
-    139,
-    141,
-    145,
-    147,
-    154,
-    156,
-    162,
-    164,
-    175,
-    177,
-    179,
-    180,
-    182,
-    183,
-    185,
-    186,
-    187,
-    188,
-    196,
-    199,
-    203,
-    205,
-    206,
-    208,
-    209,
-    210,
-    211
-   ],
-   "n_leaves": 37,
-   "leaf_iou": 0.8412,
-   "anchor_level": 18,
-   "anchor_region": 415,
-   "anchor_score": 0.6437,
-   "mirrored": false,
-   "iterations": 3,
-   "settled": true,
-   "area_ratio": 0.686,
-   "placed_by": "anchor",
-   "confident": true,
-   "area_px": 279418,
+   "area_px": 92397,
    "single": {
     "level": 0,
     "n_regions": 213,
     "regions": [
-     89,
-     92,
-     101,
-     104,
-     105,
-     108,
-     109,
-     111,
      119,
-     135,
-     139,
-     141,
-     145,
-     147,
      154,
-     156,
-     162,
-     164,
-     175,
-     177,
-     179,
-     180,
-     182,
      183,
-     185,
-     186,
-     187,
-     188,
-     196,
-     199,
-     203,
-     205,
-     206,
-     208,
-     209,
-     210,
-     211
+     188
     ],
-    "taps": 37,
+    "taps": 4,
     "merges": 1,
-    "gestures": 38
+    "gestures": 5
    },
    "mixed": {
     "steps": [
      {
-      "level": 17,
-      "n_regions": 13,
+      "level": 3,
+      "n_regions": 131,
       "regions": [
-       387
+       154
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
-     },
-     {
-      "level": 16,
-      "n_regions": 17,
-      "regions": [
-       394
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 11,
-      "n_regions": 36,
-      "regions": [
-       111
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 8,
-      "n_regions": 59,
-      "regions": [
-       175
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 5,
-      "n_regions": 95,
-      "regions": [
-       101,
-       105
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
-      "level": 4,
-      "n_regions": 111,
-      "regions": [
-       92,
-       306
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
-      "level": 3,
-      "n_regions": 131,
-      "regions": [
-       141
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 2,
-      "n_regions": 154,
-      "regions": [
-       104,
-       145
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
      },
      {
       "level": 1,
       "n_regions": 181,
       "regions": [
-       89,
-       108
+       230
       ],
-      "taps": 2,
+      "taps": 1,
       "merges": 1,
-      "gestures": 3
+      "gestures": 2
      },
      {
       "level": 0,
       "n_regions": 213,
       "regions": [
-       109
+       188
       ],
       "taps": 1,
       "merges": 1,
       "gestures": 2
      }
     ],
-    "taps": 14,
-    "merges": 9,
-    "level_changes": 9,
-    "gestures": 32
+    "taps": 3,
+    "merges": 2,
+    "level_changes": 2,
+    "gestures": 7
    },
    "feasible_levels": [
     0
@@ -2661,7 +2356,7 @@
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 37,
+    "0": 4,
     "1": null,
     "2": null,
     "3": null,
@@ -2693,79 +2388,78 @@
    "leaves": [
     95,
     118,
-    122,
-    125,
-    126,
     127,
     142
    ],
-   "n_leaves": 7,
-   "leaf_iou": 0.9389,
-   "anchor_level": 3,
-   "anchor_region": 284,
-   "anchor_score": 0.9389,
+   "n_leaves": 4,
+   "leaf_iou": 0.9188,
+   "anchor_level": 0,
+   "anchor_region": 95,
+   "anchor_score": 0.9056,
    "mirrored": false,
    "iterations": 1,
    "settled": true,
-   "area_ratio": 0.951,
+   "area_ratio": 0.93,
    "placed_by": "anchor",
    "confident": true,
-   "area_px": 43943,
+   "area_px": 42973,
    "single": {
-    "level": 7,
-    "n_regions": 69,
+    "level": 0,
+    "n_regions": 213,
     "regions": [
-     284
+     95,
+     118,
+     127,
+     142
     ],
-    "taps": 1,
-    "merges": 0,
-    "gestures": 1
+    "taps": 4,
+    "merges": 1,
+    "gestures": 5
    },
    "mixed": {
     "steps": [
      {
-      "level": 7,
-      "n_regions": 69,
+      "level": 2,
+      "n_regions": 154,
       "regions": [
-       284
+       142
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
+     },
+     {
+      "level": 0,
+      "n_regions": 213,
+      "regions": [
+       95,
+       118,
+       127
+      ],
+      "taps": 3,
+      "merges": 1,
+      "gestures": 4
      }
     ],
-    "taps": 1,
-    "merges": 0,
-    "level_changes": 0,
-    "gestures": 1
+    "taps": 4,
+    "merges": 1,
+    "level_changes": 1,
+    "gestures": 6
    },
    "feasible_levels": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
+    0
    ],
-   "one_region_levels": [
-    3,
-    4,
-    5,
-    6,
-    7
-   ],
-   "one_region": true,
+   "one_region_levels": [],
+   "one_region": false,
    "per_level_taps": {
-    "0": 7,
-    "1": 3,
-    "2": 3,
-    "3": 1,
-    "4": 1,
-    "5": 1,
-    "6": 1,
-    "7": 1,
+    "0": 4,
+    "1": null,
+    "2": null,
+    "3": null,
+    "4": null,
+    "5": null,
+    "6": null,
+    "7": null,
     "8": null,
     "9": null,
     "10": null,
@@ -2788,72 +2482,89 @@
    "label": "D4-B",
    "piece_index": 25,
    "leaves": [
-    135,
-    139,
-    141,
-    147,
-    150,
-    156,
-    162,
-    164,
-    177,
-    179,
-    180,
-    182,
-    185,
-    186
+    90,
+    92,
+    93,
+    97,
+    98,
+    101,
+    104,
+    105,
+    106,
+    108,
+    109,
+    111,
+    117
    ],
-   "n_leaves": 14,
-   "leaf_iou": 0.7198,
-   "anchor_level": 11,
-   "anchor_region": 387,
-   "anchor_score": 0.7532,
+   "n_leaves": 13,
+   "leaf_iou": 0.6265,
+   "anchor_level": 3,
+   "anchor_region": 292,
+   "anchor_score": 0.5272,
    "mirrored": false,
-   "iterations": 4,
-   "settled": false,
-   "area_ratio": 0.812,
+   "iterations": 1,
+   "settled": true,
+   "area_ratio": 0.513,
    "placed_by": "anchor",
-   "confident": true,
-   "area_px": 153832,
+   "confident": false,
+   "area_px": 97212,
    "single": {
-    "level": 1,
-    "n_regions": 181,
+    "level": 2,
+    "n_regions": 154,
     "regions": [
-     135,
-     139,
-     141,
-     147,
-     150,
-     156,
-     162,
-     164,
-     177,
-     179,
-     185,
-     186,
-     223
+     90,
+     92,
+     93,
+     97,
+     98,
+     101,
+     104,
+     105,
+     111,
+     249
     ],
-    "taps": 13,
+    "taps": 10,
     "merges": 1,
-    "gestures": 14
+    "gestures": 11
    },
    "mixed": {
     "steps": [
      {
-      "level": 17,
-      "n_regions": 13,
+      "level": 11,
+      "n_regions": 36,
       "regions": [
-       387
+       111
       ],
       "taps": 1,
       "merges": 0,
       "gestures": 1
      },
      {
-      "level": 6,
-      "n_regions": 81,
+      "level": 7,
+      "n_regions": 69,
       "regions": [
-       150
+       98
+      ],
+      "taps": 1,
+      "merges": 1,
+      "gestures": 2
+     },
+     {
+      "level": 5,
+      "n_regions": 95,
+      "regions": [
+       101,
+       105
+      ],
+      "taps": 2,
+      "merges": 1,
+      "gestures": 3
+     },
+     {
+      "level": 4,
+      "n_regions": 111,
+      "regions": [
+       92
       ],
       "taps": 1,
       "merges": 1,
@@ -2863,48 +2574,41 @@
       "level": 3,
       "n_regions": 131,
       "regions": [
-       141
+       90,
+       292
       ],
-      "taps": 1,
+      "taps": 2,
       "merges": 1,
-      "gestures": 2
+      "gestures": 3
      },
      {
       "level": 2,
       "n_regions": 154,
       "regions": [
-       185
+       93,
+       97
       ],
-      "taps": 1,
+      "taps": 2,
       "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 1,
-      "n_regions": 181,
-      "regions": [
-       177
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
+      "gestures": 3
      }
     ],
-    "taps": 5,
-    "merges": 4,
-    "level_changes": 4,
-    "gestures": 13
+    "taps": 9,
+    "merges": 5,
+    "level_changes": 5,
+    "gestures": 19
    },
    "feasible_levels": [
     0,
-    1
+    1,
+    2
    ],
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 14,
-    "1": 13,
-    "2": null,
+    "0": 13,
+    "1": 11,
+    "2": 10,
     "3": null,
     "4": null,
     "5": null,
@@ -3131,186 +2835,6 @@
    }
   },
   {
-   "label": "D7",
-   "piece_index": 26,
-   "leaves": [
-    88,
-    94,
-    100,
-    110,
-    120,
-    134,
-    138,
-    142,
-    143,
-    144,
-    158,
-    159,
-    160,
-    173,
-    181,
-    200
-   ],
-   "n_leaves": 16,
-   "leaf_iou": 0.8292,
-   "anchor_level": 18,
-   "anchor_region": 415,
-   "anchor_score": 0.6404,
-   "mirrored": false,
-   "iterations": 0,
-   "settled": true,
-   "area_ratio": 0.614,
-   "placed_by": "twin of D1",
-   "confident": true,
-   "area_px": 252591,
-   "single": {
-    "level": 0,
-    "n_regions": 213,
-    "regions": [
-     88,
-     94,
-     100,
-     110,
-     120,
-     134,
-     138,
-     142,
-     143,
-     144,
-     158,
-     159,
-     160,
-     173,
-     181,
-     200
-    ],
-    "taps": 16,
-    "merges": 1,
-    "gestures": 17
-   },
-   "mixed": {
-    "steps": [
-     {
-      "level": 17,
-      "n_regions": 13,
-      "regions": [
-       386
-      ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
-     },
-     {
-      "level": 11,
-      "n_regions": 36,
-      "regions": [
-       110
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 8,
-      "n_regions": 59,
-      "regions": [
-       173
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 6,
-      "n_regions": 81,
-      "regions": [
-       322
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 4,
-      "n_regions": 111,
-      "regions": [
-       94,
-       100
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
-      "level": 2,
-      "n_regions": 154,
-      "regions": [
-       142
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     },
-     {
-      "level": 1,
-      "n_regions": 181,
-      "regions": [
-       88,
-       143
-      ],
-      "taps": 2,
-      "merges": 1,
-      "gestures": 3
-     },
-     {
-      "level": 0,
-      "n_regions": 213,
-      "regions": [
-       120
-      ],
-      "taps": 1,
-      "merges": 1,
-      "gestures": 2
-     }
-    ],
-    "taps": 10,
-    "merges": 7,
-    "level_changes": 7,
-    "gestures": 24
-   },
-   "feasible_levels": [
-    0
-   ],
-   "one_region_levels": [],
-   "one_region": false,
-   "per_level_taps": {
-    "0": 16,
-    "1": null,
-    "2": null,
-    "3": null,
-    "4": null,
-    "5": null,
-    "6": null,
-    "7": null,
-    "8": null,
-    "9": null,
-    "10": null,
-    "11": null,
-    "12": null,
-    "13": null,
-    "14": null,
-    "15": null,
-    "16": null,
-    "17": null,
-    "18": null,
-    "19": null,
-    "20": null,
-    "21": null,
-    "22": null,
-    "23": null
-   }
-  },
-  {
    "label": "E3",
    "piece_index": 27,
    "leaves": [
@@ -3404,45 +2928,33 @@
    "piece_index": 28,
    "leaves": [
     187,
-    196,
-    199
+    196
    ],
-   "n_leaves": 3,
-   "leaf_iou": 0.6666,
-   "anchor_level": 5,
-   "anchor_region": 323,
-   "anchor_score": 0.6575,
+   "n_leaves": 2,
+   "leaf_iou": 0.6275,
+   "anchor_level": 0,
+   "anchor_region": 187,
+   "anchor_score": 0.6189,
    "mirrored": true,
    "iterations": 1,
    "settled": true,
-   "area_ratio": 0.896,
+   "area_ratio": 0.841,
    "placed_by": "anchor",
    "confident": false,
-   "area_px": 37686,
+   "area_px": 35376,
    "single": {
     "level": 0,
     "n_regions": 213,
     "regions": [
      187,
-     196,
-     199
+     196
     ],
-    "taps": 3,
+    "taps": 2,
     "merges": 1,
-    "gestures": 4
+    "gestures": 3
    },
    "mixed": {
     "steps": [
-     {
-      "level": 4,
-      "n_regions": 111,
-      "regions": [
-       199
-      ],
-      "taps": 1,
-      "merges": 0,
-      "gestures": 1
-     },
      {
       "level": 1,
       "n_regions": 181,
@@ -3450,8 +2962,8 @@
        187
       ],
       "taps": 1,
-      "merges": 1,
-      "gestures": 2
+      "merges": 0,
+      "gestures": 1
      },
      {
       "level": 0,
@@ -3464,10 +2976,10 @@
       "gestures": 2
      }
     ],
-    "taps": 3,
-    "merges": 2,
-    "level_changes": 2,
-    "gestures": 7
+    "taps": 2,
+    "merges": 1,
+    "level_changes": 1,
+    "gestures": 4
    },
    "feasible_levels": [
     0
@@ -3475,7 +2987,7 @@
    "one_region_levels": [],
    "one_region": false,
    "per_level_taps": {
-    "0": 3,
+    "0": 2,
     "1": null,
     "2": null,
     "3": null,

@@ -124,12 +124,16 @@ def _leaf_areas(session: Any) -> np.ndarray:
 
 
 def leaves_under_mask(session: Any, mask: np.ndarray, min_fraction: float = MIN_LEAF_FRACTION,
-                      leaf_areas: np.ndarray | None = None) -> list[int]:
-    """Leaf ids with at least `min_fraction` of their area under `mask`."""
+                      leaf_areas: np.ndarray | None = None, exclude: np.ndarray | None = None) -> list[int]:
+    """Leaf ids with at least `min_fraction` of their area under `mask`, minus those flagged in `exclude`
+    (a bool array indexed by leaf id)."""
     areas = _leaf_areas(session) if leaf_areas is None else leaf_areas
     inside = np.bincount(session.fragments[mask].ravel(), minlength=areas.size).astype(np.float64)
     frac = inside / np.maximum(areas, 1.0)
-    ids = np.nonzero(frac >= min_fraction)[0]
+    ok = frac >= min_fraction
+    if exclude is not None:
+        ok &= ~exclude[: ok.size]
+    ids = np.nonzero(ok)[0]
     return [int(i) for i in ids if i != 0]
 
 
@@ -164,10 +168,11 @@ class Target:
 
     @property
     def confident(self) -> bool:
-        """The placement is trusted when the shape fits and (with a scale) the size is right."""
-        if self.leaf_iou < CONFIDENT_IOU:
+        """The placement is trusted when the shape fits and the size is right; without a scale no size
+        check was possible, so nothing is trusted."""
+        if self.leaf_iou < CONFIDENT_IOU or self.area_ratio is None:
             return False
-        return self.area_ratio is None or CONFIDENT_AREA[0] <= self.area_ratio <= CONFIDENT_AREA[1]
+        return CONFIDENT_AREA[0] <= self.area_ratio <= CONFIDENT_AREA[1]
 
     def to_json(self) -> dict[str, Any]:
         return {"label": self.label, "piece_index": self.piece_index, "leaves": list(self.leaves),
@@ -193,18 +198,20 @@ def _judge(session: Any, piece: Any, leaves: Sequence[int], areas: np.ndarray, e
 def target_for_piece(session: Any, piece: Any, level: int, region_id: int, transform: gt.ShapeTransform,
                      *, anchor_score: float = 0.0, scale_ratio: float | None = None,
                      min_fraction: float = MIN_LEAF_FRACTION, iters: int = REFINE_ITERS,
-                     leaf_areas: np.ndarray | None = None) -> Target:
+                     leaf_areas: np.ndarray | None = None, exclude: np.ndarray | None = None) -> Target:
     """Leaves of the chunk a map piece names: project, take the leaves under the projection, re-fit on their
     union and repeat; the best-fitting iteration wins. With `scale_ratio` the piece keeps its true size on
-    the drawing through every refit."""
+    the drawing through every refit. Leaves flagged in `exclude` (taken by another chunk) are never used."""
     shape = (session.height, session.width)
     areas = _leaf_areas(session) if leaf_areas is None else leaf_areas
     expected = None if scale_ratio is None else float(piece.area) * float(scale_ratio) ** 2
     info = session.regions(int(level))[int(region_id)]
     projected = project_piece(piece.mask, transform, piece.centroid, info.centroid, shape, scale_ratio)
-    leaves = leaves_under_mask(session, projected, min_fraction, areas)
-    if not leaves:   # the projection missed every leaf: fall back to the anchor region itself
-        leaves = [int(i) for i in info.leaves]
+    leaves = leaves_under_mask(session, projected, min_fraction, areas, exclude)
+    if not leaves:   # the projection missed every free leaf: fall back to the anchor region's free leaves
+        leaves = [int(i) for i in info.leaves if exclude is None or not exclude[int(i)]]
+    if not leaves:
+        raise ValueError(f"no free leaves for piece {piece.name} at level {level} region {region_id}")
     best_leaves = list(leaves)
     best_fit, iou, ratio = _judge(session, piece, leaves, areas, expected)
     settled = False
@@ -213,7 +220,7 @@ def target_for_piece(session: Any, piece: Any, level: int, region_id: int, trans
         union = _union_mask(session, leaves)
         _iou, tr = gt.shape_score(piece.mask, union)
         projected = project_piece(piece.mask, tr, piece.centroid, _centroid(union), shape, scale_ratio)
-        new = leaves_under_mask(session, projected, min_fraction, areas) or leaves
+        new = leaves_under_mask(session, projected, min_fraction, areas, exclude) or leaves
         if new == leaves:
             settled = True
             break
@@ -500,7 +507,8 @@ def grouping_cost(session: Any, map_rgb: np.ndarray, labels: dict[str, Any] | No
     areas = _leaf_areas(session)
     scale, scale_info = global_scale(tables)
     targets: list[Target] = []
-    # most confident pieces first; the leaves they take cannot anchor a later piece
+    # most confident pieces first; the leaves they take are off limits to later pieces, as anchors and in
+    # the refinement, so no two chunks share a leaf
     ranked = [(p, _anchor_candidates(session, tables, p, scale)) for p in pieces]
     ranked.sort(key=lambda pc: -(pc[1][0][0] if pc[1] else -1.0))
     claimed = np.zeros(session.tree.n_leaves + 1, bool)
@@ -510,7 +518,7 @@ def grouping_cost(session: Any, map_rgb: np.ndarray, labels: dict[str, Any] | No
         for score, lv, rid in cands:
             roots = roots_by_level.setdefault(lv, _leaf_roots(session, lv))
             members = np.nonzero(roots == rid)[0]
-            if claimed[members[members != 0]].all():
+            if claimed[members[members != 0]].any():
                 continue
             pick = (score, lv, rid)
             break
@@ -520,7 +528,7 @@ def grouping_cost(session: Any, map_rgb: np.ndarray, labels: dict[str, Any] | No
         # the transform of the chosen region: re-fit, the table only kept the best candidate's
         _iou, tr = gt.shape_score(p.mask, session.label_map(lv) == rid)
         t = target_for_piece(session, p, lv, rid, tr, anchor_score=score, scale_ratio=scale,
-                             min_fraction=min_fraction, leaf_areas=areas)
+                             min_fraction=min_fraction, leaf_areas=areas, exclude=claimed)
         claimed[list(t.leaves)] = True
         targets.append(t)
     targets = resolve_duplicates(session, targets, {p.index: p for p in pieces}, areas, scale)
@@ -533,7 +541,7 @@ def grouping_cost(session: Any, map_rgb: np.ndarray, labels: dict[str, Any] | No
     for r in rows:
         by_leaves.setdefault(tuple(r["leaves"]), []).append(r["label"])
     summary = {
-        "n_pieces": len(rows), "n_leaves_total": int(session.tree.n_leaves),
+        "n_pieces": len(pieces), "n_placed": len(rows), "n_leaves_total": int(session.tree.n_leaves),
         "scale": None if scale is None else round(scale, 4), "scale_info": scale_info,
         "confident": _totals([r for r in rows if r["confident"]], paired_second),
         "all": _totals(rows, paired_second),
@@ -603,7 +611,7 @@ def render_grouping_sheet(session: Any, result: dict[str, Any], out_path: Path |
     s = result["summary"]
     c = s["confident"]
     put_text(out, f"grouping cost - {result.get('source', '')} - session {result.get('session_id', '')}: "
-                  f"{c['n']}/{n} placements confident; of those {c['one_region_pieces']} are one region at some "
+                  f"{c['n']}/{s['n_pieces']} placements confident; of those {c['one_region_pieces']} are one region at some "
                   f"level; single-level gestures {c['single_level']['gestures']} (median "
                   f"{c['single_level']['median_gestures'] or 0:g}), mixed {c['mixed']['gestures']}, with mirror "
                   f"co-select {c['mixed']['gestures_with_mirror_coselect']}",
@@ -702,7 +710,8 @@ def write_grouping_report(result: dict[str, Any], out_dir: Path | str, sheet_nam
          f"confident matches agree)." if s.get("scale") else
          f"- {n} chunks on the map, {s['n_leaves_total']} atomic leaves in the drawing; no confident match fixed a scale."),
         f"- Placement confident (leaf IoU >= {rule['leaf_iou']:.2f} and area ratio in "
-        f"{rule['area_ratio'][0]}-{rule['area_ratio'][1]}) for {s['confident']['n']}/{n}; uncertain: "
+        f"{rule['area_ratio'][0]}-{rule['area_ratio'][1]}) for {s['confident']['n']}/{n} "
+        f"({s['n_placed']} placed); uncertain: "
         f"{', '.join(s['uncertain']) or 'none'}."
         + (f" Placed through the twin map: {', '.join(s['placed_by_twin'])}." if s["placed_by_twin"] else "")
         + (f" Duplicate targets: {'; '.join('/'.join(d) for d in s['duplicate_targets'])}."

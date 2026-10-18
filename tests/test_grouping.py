@@ -140,3 +140,37 @@ def test_grouping_cost_end_to_end_synthetic(session, synthetic_dir, tmp_path):
     text = md.read_text()
     assert "## Per chunk" in text and "| chunk |" in text
     assert (tmp_path / "grouping_report.json").exists()
+
+
+def test_confident_needs_a_scale():
+    from biomorphic.verify.grouping import Target
+    good = Target("x", 1, (1,), 0.95, 0, 1, 0.9, False, 1, True, area_ratio=1.0)
+    assert good.confident
+    no_scale = Target("x", 1, (1,), 0.95, 0, 1, 0.9, False, 1, True, area_ratio=None)
+    assert not no_scale.confident
+    wrong_size = Target("x", 1, (1,), 0.95, 0, 1, 0.9, False, 1, True, area_ratio=0.3)
+    assert not wrong_size.confident
+
+
+def test_target_never_takes_excluded_leaves(session):
+    p = _piece(session, [1, 2], "left", 1)
+    iou, tr = gt.shape_score(p.mask, session.label_map(1) == 6)
+    exclude = np.zeros(session.tree.n_leaves + 1, bool)
+    exclude[2] = True
+    t = target_for_piece(session, p, 1, 6, tr, anchor_score=iou, exclude=exclude)
+    assert 2 not in t.leaves and t.leaves == (1,)
+    # the leaf-majority helper itself honours the exclusion
+    assert leaves_under_mask(session, p.mask, exclude=exclude) == [1]
+
+
+def test_grouping_cost_counts_every_map_piece(session, tmp_path):
+    res = grouping_cost(session, session.working_rgb.copy(), None, max_seconds=30)
+    s = res["summary"]
+    assert s["n_pieces"] == len(res["_objects"]["pieces"])
+    assert s["n_placed"] == len(res["rows"]) <= s["n_pieces"]
+    assert len(s["unplaced"]) == s["n_pieces"] - s["n_placed"]
+    # no two chunks share a leaf
+    seen: set[int] = set()
+    for r in res["rows"]:
+        assert not (seen & set(r["leaves"]))
+        seen |= set(r["leaves"])
