@@ -53,6 +53,14 @@ def _add_sheet(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--out", type=Path, default=None)
 
 
+def _add_grouping(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("grouping", help="measure how many gestures the review UI needs per chunk of the artist's map")
+    p.add_argument("session", type=Path)
+    p.add_argument("--map", type=Path, required=True, help="hand-made segmentation map (ground truth)")
+    p.add_argument("--labels", type=Path, default=None, help="JSON of map piece labels (default: next to the map)")
+    p.add_argument("--out", type=Path, default=Path("grouping_out"))
+
+
 def _add_pairs(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("pairs", help="print sides and mirror pairs at a level")
     p.add_argument("session", type=Path)
@@ -62,7 +70,7 @@ def _add_pairs(sub: argparse._SubParsersAction) -> None:
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="biomorphic", description="Biomorphic Composer V1")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for add in (_add_ingest, _add_serve, _add_verify, _add_library, _add_sheet, _add_pairs):
+    for add in (_add_ingest, _add_serve, _add_verify, _add_library, _add_sheet, _add_pairs, _add_grouping):
         add(sub)
     return ap
 
@@ -119,6 +127,15 @@ def main(argv: list[str] | None = None) -> int:
         from biomorphic.pipeline.debug import write_debug_sheet
         out = write_debug_sheet(args.session, args.out)
         print(f"sheet written to {out}")
+        return 0
+    if args.cmd == "grouping":
+        from biomorphic.verify.grouping import run_grouping
+        result = run_grouping(args.session, args.map, args.out, labels_path=args.labels)
+        s = result["summary"]
+        print(f"{s['one_region_pieces']}/{s['n_pieces']} chunks are one region at some level; "
+              f"single-level gestures {s['single_level']['gestures']} (median {s['single_level']['median_gestures']:g}), "
+              f"mixed {s['mixed']['gestures']}, with mirror co-select {s['mixed']['gestures_with_mirror_coselect']}")
+        print(f"report written to {result['report_path']}")
         return 0
     if args.cmd == "pairs":
         from biomorphic.session import Session
