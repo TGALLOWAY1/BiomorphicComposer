@@ -489,6 +489,32 @@ class ReviewState:
                 self._png_cache[key] = tile_utils.encode_png(rgb)
             return self._png_cache[key]
 
+    def fragments_png(self) -> bytes:
+        """The raw fragments (the split's own output: no merges, no manual groups), ids encoded like labels.png."""
+        with self.lock:
+            key = ("fragments",)
+            if key not in self._png_cache:
+                lab = self.session.fragments
+                rgb = np.empty(lab.shape + (3,), np.uint8)
+                rgb[..., 0] = lab & 255
+                rgb[..., 1] = (lab >> 8) & 255
+                rgb[..., 2] = (lab >> 16) & 255
+                self._png_cache[key] = tile_utils.encode_png(rgb)
+            return self._png_cache[key]
+
+    def fragments_json(self) -> dict:
+        """Area, bbox and centroid of every raw fragment: where the Split stage draws its seeds."""
+        with self.lock:
+            key = ("fragments_json",)
+            if key not in self._png_cache:
+                from biomorphic.session import region_stats
+                regs = region_stats(self.session.fragments, self.session.working_lab)
+                self._png_cache[key] = json.dumps({
+                    str(rid): {"area": int(r.area), "bbox": [int(v) for v in r.bbox],
+                               "centroid": [round(float(r.centroid[0]), 2), round(float(r.centroid[1]), 2)]}
+                    for rid, r in regs.items()}).encode("utf-8")
+            return json.loads(self._png_cache[key])
+
     def overlay_png(self, level: Any) -> bytes:
         with self.lock:
             i = self._check_level(level)
@@ -746,6 +772,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def r_tree(self, m: re.Match, q: dict) -> None:
         self._json(self.server.state.tree_json())
 
+    def r_fragments_png(self, m: re.Match, q: dict) -> None:
+        self._png(self.server.state.fragments_png())
+
+    def r_fragments(self, m: re.Match, q: dict) -> None:
+        self._json(self.server.state.fragments_json())
+
     def r_figure(self, m: re.Match, q: dict) -> None:
         self._png(self.server.state.figure_png())
 
@@ -785,6 +817,8 @@ ROUTES: list[tuple[str, re.Pattern, Callable]] = [
     ("GET", re.compile(r"^/api/library$"), ReviewHandler.r_library),
     ("GET", re.compile(r"^/api/axis/curve$"), ReviewHandler.r_axis_curve),
     ("GET", re.compile(r"^/api/tree$"), ReviewHandler.r_tree),
+    ("GET", re.compile(r"^/api/fragments/labels\.png$"), ReviewHandler.r_fragments_png),
+    ("GET", re.compile(r"^/api/fragments/regions$"), ReviewHandler.r_fragments),
     ("GET", re.compile(r"^/api/figure\.png$"), ReviewHandler.r_figure),
     ("GET", re.compile(r"^/api/ink\.png$"), ReviewHandler.r_ink),
     ("GET", re.compile(r"^/api/sources$"), ReviewHandler.r_sources),

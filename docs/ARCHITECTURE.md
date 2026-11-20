@@ -220,6 +220,8 @@ GET  /api/session                      {"meta": session.json, "groups": [...], "
                                         fitted centre line; straight without a fold), "has_fold": bool,
                                         "palette": [{"from": "#rrggbb", "to": "#rrggbb"}] (the built-in remap, as swatches)}
 GET  /api/working.png
+GET  /api/fragments/labels.png         the raw fragments (no merges, no manual groups), ids encoded like labels.png (Split)
+GET  /api/fragments/regions            {"<fragment id>": {"area","bbox","centroid"}}: where Split draws its seeds
 GET  /api/figure.png                   RGBA veil over everything that is not the figure (Capture: "mask out the paper")
 GET  /api/ink.png                      RGBA overlay of the ink mask (Split: "walls")
 GET  /api/axis/curve                   {"points": [[x, score], ...], "x_min", "x_max", "axis_x", "score", "measure"}: the

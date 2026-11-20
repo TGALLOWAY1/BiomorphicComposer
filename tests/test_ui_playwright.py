@@ -373,6 +373,12 @@ def test_the_eight_stages_walk(server, browser, shots_dir):
         page.click('#rail .chap[data-ch="3"]')                 # 03: the fragment count
         page.wait_for_function("document.querySelector('#frag-count').textContent === '5'")
         assert "too many pieces" in page.inner_text("#split-kv")
+        with server.state.lock:                                # composites made later do not change what the split found
+            server.state.merge(0, [1, 2], True)
+        page.click("#btn-replay")
+        page.wait_for_function("document.querySelector('#frag-count').textContent === '5'")
+        with server.state.lock:
+            server.state.unmerge(1); server.state.unmerge(0)
         page.screenshot(path=str(shots_dir / "stage-3-split.png"))
 
         page.click('#rail .chap[data-ch="4"]')                 # 04: the slider and the real merge tree
@@ -444,6 +450,11 @@ def test_library_modes_search_tags_and_rename(server, browser, shots_dir):
         page.click("#sheet-rename")
         page.wait_for_function("document.querySelector('#toast').textContent === 'Renamed to Crest'")
         assert state.library.get(tile_id).name == "Crest"
+        # a tag added after the rename (which refetched the library under the open sheet) still reaches the grid
+        page.fill("#sheet-tag-input", "outer")
+        page.press("#sheet-tag-input", "Enter")
+        page.wait_for_function("document.querySelectorAll('#sheet-tags .chip.on').length === 2")
+        assert page.locator(f'#lib-grid .lcard[data-id="{tile_id}"] .tagc').inner_text() == "#outer +1"
         page.click("#sheet-close")
         page.wait_for_function("!document.querySelector('#sheet').open")
 

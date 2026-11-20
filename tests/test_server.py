@@ -404,3 +404,13 @@ def test_sources_list_and_thumbnails(server):
     (src,) = get_json(server, "/api/sources")["sources"]
     assert src["status"] == "in_library" and src["n_tiles"] == 2
     get_json(server, "/api/sources/" + "f" * 64 + "/thumb.png", expect=404)
+
+
+def test_fragments_endpoints_ignore_merges_and_manual_groups(server, synthetic_dir):
+    post_json(server, "/api/merge", {"level": 0, "region_ids": [1, 2], "mirror": True})      # two composites
+    assert len(get_json(server, "/api/levels/0/regions")) == 3
+    frags = get_json(server, "/api/fragments/regions")                                        # still the five cells
+    assert sorted(frags) == ["1", "2", "3", "4", "5"] and frags["1"]["bbox"] == [20, 30, 50, 60]
+    status, ctype, data = get(server, "/api/fragments/labels.png")
+    assert status == 200 and ctype == "image/png"
+    assert np.array_equal(decode_labels(data), Session.load(synthetic_dir).fragments)

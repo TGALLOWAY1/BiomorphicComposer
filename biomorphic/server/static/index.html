@@ -685,17 +685,16 @@ function fillSplit() {
   kv.textContent = '';
   for (const [k, v] of rows) { kv.appendChild(el('dt', '', k)); kv.appendChild(el('dd', '', v)); }
 }
-async function loadL0() {
-  if (S.L0 && S.L0.version === S.version) return S.L0;
-  if (S.level === 0 && S.ids) return (S.L0 = { ids: S.ids, regions: S.regions, version: S.version });
-  const [labels, regions] = await Promise.all([loadImage(`/api/levels/0/labels.png?v=${S.version}`), api('/api/levels/0/regions')]);
-  return (S.L0 = { ids: decodeLabels(labels), regions: new Map(Object.entries(regions).map(([k, r]) => [Number(k), r])), version: S.version });
+async function loadL0() {                                        // the split's own output: raw fragments, whatever the
+  if (S.L0) return S.L0;                                         // slider shows and whatever was merged by hand since
+  const [labels, regions] = await Promise.all([loadImage('/api/fragments/labels.png'), api('/api/fragments/regions')]);
+  return (S.L0 = { ids: decodeLabels(labels), regions: new Map(Object.entries(regions).map(([k, r]) => [Number(k), r])) });
 }
 async function enterSplit(play) {
-  const total = (S.meta.counts && S.meta.counts.fragments) || (S.levels[0] && S.levels[0].n_regions) || 0;
+  let total = (S.meta.counts && S.meta.counts.fragments) || (S.levels[0] && S.levels[0].n_regions) || 0;
   $('frag-count').textContent = fmt(total);
   render();
-  try { await loadL0(); } catch (e) { toast(e.message, 'err'); return; }
+  try { total = (await loadL0()).regions.size || total; } catch (e) { toast(e.message, 'err'); return; }   // the count is of what is drawn
   if (S.ch !== 3) return;
   const stop = animate(play ? 1500 : 0, (p) => { S.flood = p; $('frag-count').textContent = fmt(Math.round(total * p)); render(); });
   stopAnim = () => { stop(); S.flood = 1; $('frag-count').textContent = fmt(total); };
@@ -1046,8 +1045,8 @@ function render() {
   } else if (ch === 3) {
     dim(0.28);
     const L0 = S.L0, ax = S.meta.axis ? S.meta.axis.x : S.W / 2;
-    if (L0 && L0.version === S.version) {
-      const ovc = buildOverlay(ov0Cache, `L0|${S.version}`, L0.ids, L0.regions, 0.5, LINE_AMBER);
+    if (L0) {
+      const ovc = buildOverlay(ov0Cache, 'fragments', L0.ids, L0.regions, 0.5, LINE_AMBER);
       const R = Math.hypot(Math.max(ax, S.W - ax) * sx, h / 2) * S.flood;
       sctx.save(); sctx.beginPath(); sctx.arc(ax * sx, h / 2, R, 0, Math.PI * 2); sctx.clip(); sctx.drawImage(ovc, 0, 0); sctx.restore();
       if (S.inkOn && S.inkImg) sctx.drawImage(S.inkImg, 0, 0, w, h);
@@ -1371,7 +1370,8 @@ function openSheet(id) {
   if (!sheet.open) sheet.showModal();
 }
 async function changeTag(t, body, redraw) {
-  try { const j = await post(`/api/tiles/${encodeURIComponent(t.id)}/tags`, body); t.tags = j.tags; redraw(j.tags); if (S.ch === 6) renderLibrary(); }
+  try { const j = await post(`/api/tiles/${encodeURIComponent(t.id)}/tags`, body); t.tags = j.tags; const cur = byId(t.id); if (cur) cur.tags = j.tags;   // the library may have been refetched while the sheet was open
+    redraw(j.tags); if (S.ch === 6) renderLibrary(); }
   catch (e) { toast(e.message, 'err'); }
 }
 sheet.addEventListener('click', (e) => {                        // a tap on the backdrop closes it
