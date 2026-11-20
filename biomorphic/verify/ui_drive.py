@@ -260,7 +260,7 @@ def drive_ui(session_dir: Path | str, library_dir: Path | str, out_dir: Path | s
         result["error"] = f"not run: review server unavailable: {type(exc).__name__}: {exc}"
         result["traceback"] = traceback.format_exc()
         return result
-    url = f"http://127.0.0.1:{port}/"
+    url = f"http://127.0.0.1:{port}/#review"            # the review stage; without the fragment the page opens on Capture
     result["url"] = url
     lib_before = _library_snapshot(library_dir)
 

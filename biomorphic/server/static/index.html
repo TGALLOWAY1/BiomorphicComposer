@@ -4,140 +4,430 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Biomorphic Composer — review</title>
+<title>Biomorphic Composer</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23139fca'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23d98d12'/%3E%3C/svg%3E">
 <style>
+  /* The look is the reel's: a drafting-board page, the drawing as a print on the left, one card per stage on the
+     right. Fonts are served from /static (no network needed); every colour is a token with a dark counterpart. */
+  @font-face { font-family: "Syne"; src: url("/static/syne.woff2") format("woff2"); font-weight: 600 800; font-display: swap; }
+  @font-face { font-family: "Recursive"; src: url("/static/recursive-sans.woff2") format("woff2"); font-weight: 300 800; font-display: swap; }
+  @font-face { font-family: "Recursive Mono"; src: url("/static/recursive-mono.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
   :root {
-    --bg: #f3f5f8; --card: #ffffff; --ink: #162131; --muted: #5a6878; --line: #d9dfe7;
-    --accent: #2a73b3; --sel: #139fca; --twin: #d98d12; --ok: #3f9a72; --err: #c0392b;
-    --shadow: 0 2px 10px rgba(22, 33, 49, .08);
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --bg: #ebf0f4; --surface: #fafcfd; --stage: #f3f6f9; --ink: #162131; --muted: #5a6878; --line: #cbd5e0;
+    --grid: rgba(42, 84, 134, .09); --accent: #2a73b3; --sel: #139fca; --mirror: #d98d12; --ok: #3f9a72; --err: #c0392b;
+    --press: #1f5f96; --on-accent: #f3f6f9;
+    --shadow: 0 1px 2px rgba(18, 33, 52, .07), 0 10px 28px rgba(18, 33, 52, .10);
+    --print: 0 2px 4px rgba(10, 20, 35, .18), 0 18px 40px rgba(10, 20, 35, .22);
+    --f-display: "Syne", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --f-body: "Recursive", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "Recursive Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --twin: var(--mirror);
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0e1319; --card: #161d26; --ink: #e9eef4; --muted: #94a1b0; --line: #273341;
-            --shadow: 0 2px 12px rgba(0, 0, 0, .45); }
+    :root { --bg: #0b1118; --surface: #141c27; --stage: #0f1722; --ink: #e3e9f0; --muted: #8e9cae; --line: #26323f;
+      --grid: rgba(138, 174, 222, .075); --accent: #67abe4; --sel: #47c4ea; --mirror: #f1ae45; --ok: #6cc79c; --err: #e5796b;
+      --press: #8cc2ef; --on-accent: #0f1722;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px rgba(0, 0, 0, .35); --print: 0 2px 4px rgba(0, 0, 0, .5), 0 18px 40px rgba(0, 0, 0, .5); }
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
-  body { min-height: 100dvh; display: flex; flex-direction: column; -webkit-tap-highlight-color: transparent; }
-  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-  .eyebrow { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body { min-height: 100dvh; color: var(--ink); font: 15px/1.4 var(--f-body); -webkit-tap-highlight-color: transparent;
+    background-color: var(--bg);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 120px 120px; }
+  .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  .lbl, .eyebrow { margin: 0; font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
   b { font-weight: 700; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* header */
-  #hdr { padding: 10px 12px 6px; max-width: 760px; width: 100%; margin: 0 auto; }
-  .hdr-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .brand { font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
-  .brand span { color: var(--muted); font-weight: 500; }
-  .chip { font-size: 12px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted); white-space: nowrap; }
-  .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
-  .chip.err { color: var(--err); }
-  .hdr-meta { margin-top: 4px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ------------------------------------------------------------------ header: source line, stage rail, caption */
+  #top { max-width: 1240px; margin: 0 auto; padding: 14px 16px 0; display: grid; gap: 10px; }
+  .top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .top-row .eyebrow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hdr-meta { letter-spacing: .04em; text-transform: none; }
+  .pill { flex: none; font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+  .pill.err { color: var(--err); }
+  #nav { display: grid; gap: 10px; min-width: 0; }
+  #nav-slot:empty { display: none; }
+  #rail { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
+  #rail::-webkit-scrollbar { display: none; }
+  .chap { flex: 1 0 auto; display: flex; align-items: baseline; gap: 7px; padding: 8px 12px; min-width: 0; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--surface); white-space: nowrap; text-align: left; }
+  .chap .n { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .chap .t { font-family: var(--f-display); font-weight: 700; font-size: 14px; }
+  .chap .lk { flex: none; align-self: center; margin-left: auto; color: var(--muted); display: inline-grid; }
+  .chap .lk svg { width: 12px; height: 12px; }
+  .chap[aria-current="step"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+  .chap[aria-current="step"] .n { color: var(--accent); }
+  .chap.later .t { color: var(--muted); }
+  #cap { display: flex; align-items: baseline; gap: 12px; min-width: 0; flex-wrap: wrap; }
+  #cap .cn { font-size: 14px; color: var(--accent); letter-spacing: .06em; white-space: nowrap; }
+  #cap h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 22px; line-height: 1.1; letter-spacing: -.01em; }
+  #cap .cl { font-size: 15px; color: var(--muted); min-width: 0; }
 
-  /* stage */
-  main { flex: 1 0 auto; width: 100%; max-width: 760px; margin: 0 auto; padding: 0 12px; }
-  #stage-wrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
-  #stage { display: block; width: 100%; touch-action: manipulation; cursor: crosshair; user-select: none; -webkit-user-select: none; }
-  #stage-wrap[data-paint="1"] #stage { touch-action: none; cursor: cell; }   /* a finger drag paints parts, so the browser must not scroll or pinch */
-  #stage-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--card) 70%, transparent); pointer-events: none; }
+  /* ------------------------------------------------------------------ layout: print on the left, cards on the right */
+  main { max-width: 1240px; margin: 0 auto; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 14px; }
+  #art { width: 100%; max-width: 760px; margin: 0 auto; }
+  #panel { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  @media (min-width: 980px) {
+    main { display: grid; grid-template-columns: var(--art-w, 480px) minmax(0, 1fr); gap: 32px; align-items: start; padding-bottom: 40px; }
+    #art { position: sticky; top: 14px; margin: 0; max-width: none; }
+    #panel { max-width: 640px; margin: 0; }
+    body.wide main { display: block; }
+    body.wide #panel { max-width: none; margin-bottom: 14px; }
+    body.wide #panel > .card, body.wide #gloss { max-width: 720px; }
+    #dock { display: none !important; }
+    /* the stage index sits above the cards, four across like the reel's chapter index */
+    #rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; padding: 0; }
+    body.wide #rail { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+    .chap { padding: 9px 10px; }
+    .chap .t { overflow: hidden; text-overflow: ellipsis; }
+  }
+  body.wide #art { display: none; }
+
+  #stage-wrap { position: relative; width: 100%; border-radius: 3px; overflow: hidden; background: var(--surface); box-shadow: var(--print); }
+  #stage { display: block; width: 100%; touch-action: manipulation; cursor: default; user-select: none; -webkit-user-select: none; }
+  body[data-ch="4"] #stage, body[data-ch="5"] #stage { cursor: crosshair; }
+  body[data-ch="5"] #stage-wrap[data-paint="1"] #stage { touch-action: none; cursor: cell; }   /* a finger drag paints parts, so the browser must not scroll or pinch */
+  #stage-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); background: color-mix(in srgb, var(--surface) 70%, transparent); pointer-events: none; }
   #stage-msg:empty { display: none; }
-  #info { min-height: 22px; margin: 8px 2px 4px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
-  #info .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
-  #info .dot.sel { background: var(--sel); } #info .dot.twin { background: var(--twin); }
-  #info .part { color: var(--ink); }
+  .tag { position: absolute; transform: translateX(-50%); font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--stage); white-space: nowrap; pointer-events: none; }
+  .tag.mirror { background: var(--mirror); color: #1b1305; }
+  #art-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; min-height: 34px; }
+  #art-tools .lbl { margin-right: 2px; }
 
-  /* tray */
-  #tray-wrap { margin: 6px 0 10px; }
-  .tray-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 6px; }
-  #tray-count { font-size: 12px; color: var(--muted); }
-  #tray { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
-  #tray:empty { display: none; }
-  #tray-empty { font-size: 12px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 12px; }
-  #tray:not(:empty) + #tray-empty { display: none; }
-  .tile { flex: 0 0 auto; width: 104px; scroll-snap-align: start; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; cursor: pointer; }
-  .tile:active { transform: scale(.97); }
-  .tile img { display: block; width: 90px; height: 72px; object-fit: contain; margin: 0 auto;
-    background: repeating-conic-gradient(color-mix(in srgb, var(--line) 50%, transparent) 0 25%, transparent 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
-  .tile .tile-id { font-size: 11px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
-  .tile .badges { display: flex; gap: 4px; margin-top: 4px; }
-  .badge { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .badge { flex: 0 0 auto; }
-  .badge.pair { flex: 0 1 auto; min-width: 0; color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
-  .badge.axis { color: var(--accent); }
-  .badge.composite { color: var(--sel); border-color: color-mix(in srgb, var(--sel) 55%, var(--line)); }
-
-  /* controls (sticky bottom) */
-  #controls { position: sticky; bottom: 0; z-index: 5; background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border-top: 1px solid var(--line); padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
-  #controls > * { max-width: 736px; margin-left: auto; margin-right: auto; }
-  .readout { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-  .count-wrap { display: flex; align-items: baseline; gap: 8px; }
-  .count { font-family: var(--mono); font-size: 40px; line-height: 1; font-weight: 700; letter-spacing: -.02em; }
+  /* ------------------------------------------------------------------ cards and their pieces */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 20px 22px; min-width: 0; }
+  .card:empty { display: none; }
+  .big { font-family: var(--f-display); font-weight: 700; font-size: 28px; line-height: 1.1; margin-top: 8px; overflow-wrap: anywhere; }
+  .sub { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .steps { margin-top: 20px; display: grid; gap: 14px; }
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; font-size: 16px; }
+  .step small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; font-family: var(--f-mono); }
+  .chk { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; color: var(--surface); transition: background .25s, border-color .25s; }
+  .chk svg { width: 15px; height: 15px; }
+  .step.on .chk { background: var(--ok); border-color: var(--ok); }
+  .chart { margin-top: 14px; display: block; width: 100%; height: auto; }
+  .chart text { font-family: var(--f-mono); font-size: 12px; fill: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 14px; }
+  .readout > div { display: grid; gap: 2px; }
+  .readout b { font-family: var(--f-display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .readout b.small { font-size: 19px; line-height: 1.65; }
+  .count { font-family: var(--f-display); font-weight: 800; font-size: 88px; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; margin-top: 8px; }
   .count[data-approx="1"] { color: var(--muted); }
-  .level-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; color: var(--muted); }
-  #slider { display: block; width: 100%; margin: 8px 0 10px; height: 44px; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; touch-action: pan-y; }
-  #slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
-  #slider::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--sel), var(--accent)); }
-  #slider::-moz-range-track { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--sel), var(--accent)); }
-  #slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 34px; height: 34px; margin-top: -13px; border-radius: 50%; background: var(--card); border: 3px solid var(--accent); box-shadow: var(--shadow); }
-  #slider::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: var(--card); border: 3px solid var(--accent); box-shadow: var(--shadow); }
-  .actions { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
-  .btn { flex: 1 1 auto; min-height: 48px; min-width: 72px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 600 15px var(--sans); cursor: pointer; }
-  .btn:active:not(:disabled) { transform: scale(.97); filter: brightness(.95); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 9px 18px; margin: 20px 0 0; font-size: 15px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .note { margin: 14px 0 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-family: var(--f-mono); font-size: 13px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; user-select: none; }
+  .chip[aria-pressed="true"], .chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  label.chip { cursor: pointer; min-height: 34px; }
+  label.chip input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  label.chip:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+  .btn { display: inline-grid; place-items: center; min-height: 48px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 600; font-size: 15px; }
+  .btn:active:not(:disabled) { transform: scale(.97); }
   .btn:disabled { opacity: .45; cursor: default; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-size: 17px; min-height: 52px; }
+  .btn.primary:active:not(:disabled) { background: var(--press); }
   .btn.ghost { background: transparent; }
-  .btn.warn { color: var(--twin); }
-  .toggle { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; min-height: 48px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font: 500 13px var(--sans); color: var(--muted); cursor: pointer; user-select: none; }
-  .toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--twin); }
-  .toggle:has(input:checked) { color: var(--twin); border-color: color-mix(in srgb, var(--twin) 55%, var(--line)); }
+  .btn.warn { color: var(--mirror); }
+  #gloss { margin: 0 2px; font-size: 13px; line-height: 1.5; color: var(--muted); max-width: 64ch; }
+  #gloss b { color: var(--ink); font-weight: 600; }
+  #next { align-self: flex-start; }
+
+  /* resolution: the count, the slider over the merge-tree levels, its tick stops */
+  #res .count-wrap { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  #res .level-wrap { margin-left: auto; font-size: 12px; color: var(--muted); display: flex; gap: 12px; }
+  body[data-ch="5"] #res .count { font-size: 44px; margin-top: 4px; }
+  #slider { display: block; width: 100%; margin: 14px 0 0; height: 36px; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; touch-action: pan-y; }
+  #slider::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--accent) var(--fill, 0%), var(--line) var(--fill, 0%)); }
+  #slider::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+  #slider::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+  #slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; margin-top: -11px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); box-shadow: var(--shadow); }
+  #slider::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); box-shadow: var(--shadow); }
+  #ticks { position: relative; height: 18px; margin: 0 14px; }
+  #ticks span { position: absolute; top: 0; transform: translateX(-50%); font-size: 12px; color: var(--muted); }
+  #dendro { display: block; width: 100%; height: auto; margin-top: 6px; }
+  #dendro path, #dendro line { vector-effect: non-scaling-stroke; }
+
+  /* review */
+  #info { margin-top: 14px; display: grid; gap: 10px; font-size: 15px; min-height: 24px; }
+  #info .hint { color: var(--muted); font-size: 14px; }
+  #info .row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  #info .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; align-self: center; flex: none; }
+  #info .dot.sel { background: var(--sel); } #info .dot.twin { background: var(--mirror); }
+  #info .px { font-family: var(--f-mono); font-size: 13px; color: var(--muted); }
+  #info .saved { font-family: var(--f-mono); font-size: 13px; color: var(--ok); }
+  #actions { display: grid; gap: 10px; margin-top: 18px; }
+  #actions .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #actions .row2 .btn { flex: 1 1 auto; min-height: 44px; }
+  #btn-save { width: 100%; }
+  .tray-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 22px; }
+  #tray-count { font-size: 12px; color: var(--muted); }
+  #tray-box { margin-top: 8px; border: 1.5px dashed var(--line); border-radius: 12px; padding: 12px; }
+  #tray { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; max-height: 420px; overflow-y: auto; }
+  #tray:empty { display: none; }
+  #tray-empty { font-size: 13px; color: var(--muted); }
+  #tray:not(:empty) + #tray-empty { display: none; }
+  .tile { min-width: 0; cursor: pointer; text-align: center; }
+  .tile:active { transform: scale(.97); }
+  .tile .slot { border-radius: 10px; background: color-mix(in srgb, var(--line) 35%, transparent); padding: 8px; }
+  .tile img { display: block; width: 100%; height: 84px; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(10, 20, 35, .22)); }
+  .tile .tile-id { font-size: 13px; margin-top: 6px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .tile-id span { color: var(--muted); }
+  .tile .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; justify-content: center; }
+  .badge { font-family: var(--f-mono); font-size: 10px; padding: 1px 5px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .badge.pair { color: var(--mirror); border-color: color-mix(in srgb, var(--mirror) 55%, var(--line)); }
+  .badge.composite { color: var(--sel); border-color: color-mix(in srgb, var(--sel) 55%, var(--line)); }
+  .fly { position: fixed; z-index: 30; transform-origin: 0 0; pointer-events: none; filter: drop-shadow(0 6px 8px rgba(10, 20, 35, .35)); }
+
+  /* sticky dock under the drawing on a phone: the slider must stay in view while the drawing changes */
+  #dock { position: sticky; bottom: 0; z-index: 5; margin: 0 -16px; padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid var(--line); }
+  #dock:empty { display: none; }
+  #dock #res .lbl { display: none; }
+  #dock #res .count { font-size: 38px; margin-top: 0; }
+  #dock #slider { margin-top: 2px; }
+  #dock #ticks { display: none; }
+  #dock #actions { margin-top: 6px; grid-template-columns: 1fr; gap: 8px; }
+  #dock #actions .row2 { gap: 6px; }                 /* wraps when Unmerge joins the row: never wider than the phone */
+  #dock #actions .row2 .btn { min-height: 40px; padding: 0 8px; min-width: 0; font-size: 14px; }
+  #dock label.chip { font-size: 12px; padding: 4px 7px; gap: 5px; white-space: nowrap; }
+  #dock #res .level-wrap > span:last-child { display: none; }
+  #dock #btn-save { min-height: 46px; font-size: 16px; }
+  #dock > * { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+  /* ------------------------------------------------------------------ library */
+  #lib { display: grid; gap: 14px; padding-bottom: 40px; }
+  #sources { display: flex; flex-wrap: wrap; gap: 18px 36px; margin-top: 14px; }
+  .srcRow { display: grid; grid-template-columns: 84px auto; gap: 16px; align-items: center; }
+  .thumb { width: 84px; height: 128px; border-radius: 4px; overflow: hidden; box-shadow: var(--shadow); background: var(--stage); }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .srcRow .big { font-size: 21px; margin-top: 0; }
+  .srcRow .st { margin-top: 8px; font-family: var(--f-mono); font-size: 13px; }
+  .st.ok { color: var(--ok); } .st.wait { color: var(--mirror); }
+  .tool { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; }
+  .segc { display: flex; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 3px; }
+  .segc button { border: 0; background: transparent; padding: 8px 16px; border-radius: 7px; font-size: 15px; white-space: nowrap; }
+  .segc button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .search { margin-left: auto; flex: 1 1 220px; max-width: 320px; height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+  .search svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
+  .search input { border: 0; outline: 0; background: transparent; width: 100%; min-width: 0; font-family: var(--f-mono); font-size: 15px; }
+  .search:focus-within { border-color: var(--accent); }
+  #palette { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+  #palette .grp { display: flex; align-items: center; gap: 8px; }
+  .sw { display: flex; gap: 6px; }
+  .sw span { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); }
+  #lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px 8px; }
+  .lcard { position: relative; height: 224px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0; text-align: left; transition: opacity .2s; }
+  .lcard .id { position: absolute; left: 10px; top: 8px; right: 10px; font-family: var(--f-mono); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lcard .pic { position: absolute; left: 7px; right: 7px; top: 32px; height: 128px; display: grid; place-items: center; }
+  .lcard .pic img { max-width: 100%; max-height: 128px; display: block; filter: drop-shadow(0 3px 3px rgba(10, 20, 35, .2)); }
+  .lcard .pv { position: absolute; left: 10px; right: 8px; bottom: 28px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; white-space: nowrap; overflow: hidden; }
+  .lcard .pv svg { width: 11px; height: 11px; flex: none; }
+  .lcard .pr { position: absolute; left: 10px; right: 8px; bottom: 9px; font-family: var(--f-mono); font-size: 11px; color: var(--mirror); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lcard .pr.axis { color: var(--muted); }
+  .lcard .tagc { position: absolute; right: 8px; top: 8px; max-width: 60%; font-family: var(--f-mono); font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--accent); color: var(--on-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lcard:has(.tagc) .id { right: 62%; }
+  .lcard.dim { opacity: .3; }
+  .lcard.hit { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .lcard.pending .pic img { border-radius: 3px; opacity: .8; }
+  #lib-empty { color: var(--muted); font-size: 14px; }
+  @media (prefers-color-scheme: dark) {   /* black ink on a dark card: show the outline view light instead (still only a view) */
+    #lib-grid[data-mode="outline"] .pic img, #sheet[data-mode="outline"] .sheet-pic img.t { filter: invert(.9); }
+  }
+
+  /* tile sheet */
+  #sheet { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: var(--print); padding: 22px; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+  #sheet::backdrop { background: rgba(10, 18, 28, .45); }
+  .sheet-top { display: flex; gap: 10px; align-items: center; }
+  .sheet-top input { flex: 1; min-width: 0; height: 44px; border: 1px solid var(--line); border-radius: 10px; background: transparent; padding: 0 12px; font-family: var(--f-display); font-weight: 700; font-size: 22px; }
+  .sheet-pic { margin: 16px 0 0; height: 220px; display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--line) 35%, transparent); position: relative; }
+  .sheet-pic img.t { max-width: 90%; max-height: 200px; filter: drop-shadow(0 4px 4px rgba(10, 20, 35, .25)); }
+  .sheet-map { position: absolute; right: 10px; bottom: 10px; width: 62px; border-radius: 3px; overflow: hidden; box-shadow: var(--shadow); background: var(--surface); }
+  .sheet-map img { display: block; width: 100%; }
+  .sheet-map i { position: absolute; border: 2px solid var(--sel); border-radius: 2px; }
+  #sheet .kv { font-size: 13px; gap: 6px 16px; margin-top: 16px; }
+  #sheet .kv dd { font-family: var(--f-mono); }
+  #sheet a { color: var(--accent); }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+  .tag-row .chip button { border: 0; background: transparent; padding: 0 0 0 2px; color: inherit; font-size: 14px; line-height: 1; }
+  .tag-row input { height: 34px; width: 130px; border: 1px solid var(--line); border-radius: 7px; background: transparent; padding: 0 10px; font-family: var(--f-mono); font-size: 13px; }
+  .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .sheet-actions .btn { min-height: 42px; }
 
   /* toast */
-  #toast { position: fixed; left: 50%; bottom: calc(176px + env(safe-area-inset-bottom)); transform: translate(-50%, 8px); z-index: 10;
-    max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font: 500 14px var(--sans);
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translate(-50%, 8px); z-index: 40;
+    max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font-weight: 500; font-size: 14px;
     box-shadow: var(--shadow); opacity: 0; visibility: hidden; transition: opacity .18s, transform .18s, visibility .18s; pointer-events: none; }
   #toast[data-show="1"] { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
   #toast.ok { background: var(--ok); color: #fff; } #toast.err { background: var(--err); color: #fff; }
+
+  @media (max-width: 520px) {
+    .card { padding: 16px; }
+    .count { font-size: 64px; }
+    #cap h1 { font-size: 19px; } #cap .cl { font-size: 14px; }
+    .segc { width: 100%; } .segc button { flex: 1; padding: 8px 4px; font-size: 14px; }
+    .search { max-width: none; margin-left: 0; }
+    .hdr-meta .opt { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
-<body>
-<header id="hdr">
-  <div class="hdr-row">
-    <div class="brand">Biomorphic <span>review</span></div>
-    <div id="hdr-lib" class="chip mono">library …</div>
+<body data-ch="1">
+<header id="top">
+  <div class="top-row">
+    <p class="eyebrow">Biomorphic Composer <span class="hdr-meta">· <span id="hdr-file">…</span><span class="opt"> · axis x <span id="hdr-axis">–</span> · session <span id="hdr-session">–</span></span></span></p>
+    <div id="hdr-lib" class="pill mono">library …</div>
   </div>
-  <div class="hdr-meta mono"><span id="hdr-file">…</span> · axis x <span id="hdr-axis">–</span> · session <span id="hdr-session">–</span></div>
+  <div id="nav-slot"><div id="nav">
+    <nav id="rail" aria-label="Stages"></nav>
+    <div id="cap"><span class="cn mono" id="cap-n"></span><h1 id="cap-t"></h1><span class="cl" id="cap-l"></span></div>
+  </div></div>
 </header>
 
-<main>
-  <div id="stage-wrap">
-    <canvas id="stage" data-selected="" data-twins="" data-level="" aria-label="the drawing; tap a part to select it"></canvas>
-    <div id="stage-msg">loading…</div>
-  </div>
-  <div id="info" class="mono"></div>
-  <section id="tray-wrap">
-    <div class="tray-head"><span class="eyebrow">Saved tiles</span><span id="tray-count" class="mono"></span></div>
-    <div id="tray"></div>
-    <div id="tray-empty" class="mono">No tiles saved yet — select a part and tap Save.</div>
+<main id="main">
+  <section id="art" aria-label="The drawing">
+    <div id="stage-wrap">
+      <canvas id="stage" data-selected="" data-twins="" data-level="" aria-label="the drawing; tap a part to select it"></canvas>
+      <div id="axis-tag" class="tag mono" hidden></div>
+      <div id="mirror-tag" class="tag mono mirror" hidden></div>
+      <div id="stage-msg">loading…</div>
+    </div>
+    <div id="art-tools">
+      <button id="btn-fold" class="chip" type="button" aria-pressed="false" data-chs="2">fold to compare</button>
+      <button id="btn-seeds" class="chip" type="button" aria-pressed="true" data-chs="3">seeds</button>
+      <button id="btn-ink" class="chip" type="button" aria-pressed="false" data-chs="3">ink walls</button>
+      <button id="btn-replay" class="chip" type="button" data-chs="3">replay flood</button>
+      <span class="lbl" data-chs="4 5">Overlay</span>
+      <span class="chips" id="overlay-modes" data-chs="4 5">
+        <button class="chip" type="button" data-ov="fill">regions</button>
+        <button class="chip" type="button" data-ov="lines">lines</button>
+        <button class="chip" type="button" data-ov="off">photo</button>
+      </span>
+    </div>
   </section>
+
+  <section id="panel">
+    <!-- 01 capture -->
+    <div class="card" data-chs="1">
+      <div class="lbl">Source photo</div>
+      <div class="big" id="cap-file">…</div>
+      <div class="sub" id="cap-size"></div>
+      <div class="steps" id="cap-steps"></div>
+    </div>
+
+    <!-- 02 mirror axis -->
+    <div class="card" data-chs="2">
+      <div class="lbl">Mirror axis search</div>
+      <div class="sub">Score every candidate line by folding the drawing onto itself.</div>
+      <svg id="axis-chart" class="chart" viewBox="0 0 500 250" role="img" aria-label="mirror score against candidate axis position"></svg>
+      <div class="readout">
+        <div><span class="lbl">Axis</span><b id="ax-x">–</b></div>
+        <div><span class="lbl">Mirror match</span><b id="ax-r">–</b></div>
+        <div id="ax-fold-wrap" hidden><span class="lbl">After aligning the halves</span><b class="small" id="ax-fold">–</b></div>
+      </div>
+      <p class="note" id="ax-note"></p>
+    </div>
+
+    <!-- 03 split -->
+    <div class="card" data-chs="3">
+      <div class="lbl">Split aggressively</div>
+      <div class="count" id="frag-count">0</div>
+      <div class="sub">fragments</div>
+      <dl class="kv" id="split-kv"></dl>
+    </div>
+
+    <!-- 04 / 05: the resolution block lives here on a wide screen and in the dock on a phone -->
+    <div class="card" data-chs="4 5" id="res-slot"><div id="res">
+      <div class="lbl">Merge tree · resolution</div>
+      <div class="count-wrap">
+        <span id="count" class="count">–</span><span class="sub">parts at this cut</span>
+        <span class="level-wrap mono"><span>level <b id="level-idx">0</b> / <span id="level-max">0</span></span><span>cost <b id="cost">0.00</b></span></span>
+      </div>
+      <input id="slider" type="range" min="0" max="0" step="1" value="0" aria-label="resolution: where the merge tree is cut">
+      <div id="ticks" class="mono" aria-hidden="true"></div>
+    </div></div>
+
+    <!-- 04 merge tree -->
+    <div class="card" data-chs="4">
+      <div class="lbl">The merge tree</div>
+      <svg id="dendro" viewBox="0 0 500 250" role="img" aria-label="merge tree with the cut line"></svg>
+      <p class="note" id="tree-note"></p>
+    </div>
+
+    <!-- 05 review -->
+    <div class="card" data-chs="5" id="rev">
+      <div class="lbl">Review</div>
+      <div id="info"></div>
+      <div id="actions-slot"><div id="actions">
+        <button id="btn-save" class="btn primary" type="button" disabled>Save to tray</button>
+        <div class="row2">
+          <button id="btn-merge" class="btn" type="button" disabled>Merge</button>
+          <button id="btn-unmerge" class="btn ghost warn" type="button" hidden>Unmerge</button>
+          <button id="btn-clear" class="btn ghost" type="button">Clear</button>
+          <label class="chip" title="when on, drag across parts to select them all; tap a part to add or remove it; drag with it off to scroll and pinch"><input id="paint-mode" type="checkbox" checked><span>paint</span></label>
+          <label class="chip" title="when on, Merge also makes the mirror composite: the parts under the composite folded across the axis"><input id="mirror-merges" type="checkbox" checked><span>mirror merges</span></label>
+        </div>
+      </div></div>
+      <div class="tray-head"><span class="lbl">Tray</span><span id="tray-count" class="mono"></span></div>
+      <div id="tray-box">
+        <div id="tray"></div>
+        <div id="tray-empty">Nothing saved from this drawing yet. Tap a part, then save it.</div>
+      </div>
+    </div>
+
+    <!-- 07 / 08: shown in the reel, not built yet -->
+    <div class="card" data-chs="7">
+      <div class="lbl">Compose · not built yet</div>
+      <div class="big">The composer comes after the library.</div>
+      <p class="note">The reel shows a shelf of parts, a canvas with the mirror axis, hand-placed anchors that lock, and a Generate button that fills the open sockets in order of fewest options. None of that exists in this version: it stops once parts are in the library.</p>
+      <dl class="kv">
+        <dt>Ready for it</dt><dd>every stored part knows its side, its mirror twin and where it sat on the drawing</dd>
+        <dt>Still open</dt><dd>what a socket is, and what makes a part a valid fit for one</dd>
+      </dl>
+    </div>
+    <div class="card" data-chs="8">
+      <div class="lbl">Recolor and export · partly built</div>
+      <div class="big">Recolor is a view today. Export is not built.</div>
+      <p class="note">The palette remap already works as a view on stored parts: open the library and choose Recolor. Writing a composed piece as a layered PSD for Procreate needs the composer first.</p>
+      <div id="palette-later" style="margin-top:16px"></div>
+    </div>
+
+    <p id="gloss"></p>
+    <button id="next" class="btn ghost" type="button"></button>
+  </section>
+
+  <!-- 06 library -->
+  <section id="lib" data-chs="6" hidden>
+    <div class="card">
+      <div class="lbl">Sources</div>
+      <div id="sources"></div>
+    </div>
+    <div class="tool">
+      <div class="segc" id="modes" role="group" aria-label="render mode">
+        <button type="button" data-mode="original">Original</button>
+        <button type="button" data-mode="greyscale">Greyscale</button>
+        <button type="button" data-mode="outline">Outline</button>
+        <button type="button" data-mode="remap">Recolor</button>
+      </div>
+      <label class="search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M10.5 10.5l3.5 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <input id="lib-search" type="search" placeholder="name, tag or source" aria-label="search the library" autocomplete="off"></label>
+    </div>
+    <div id="palette" hidden></div>
+    <div id="lib-grid"></div>
+    <p id="lib-empty" hidden></p>
+    <p id="lib-gloss" class="note" style="margin:0;max-width:64ch"></p>
+  </section>
+
+  <div id="dock" data-chs="4 5"></div>
 </main>
 
-<footer id="controls">
-  <div class="readout">
-    <div class="count-wrap"><span id="count" class="count">–</span><span class="eyebrow">regions</span></div>
-    <div class="level-wrap mono"><span>level <b id="level-idx">0</b> / <span id="level-max">0</span></span><span>cost <b id="cost">0.00</b></span></div>
-  </div>
-  <input id="slider" type="range" min="0" max="0" step="1" value="0" aria-label="granularity level">
-  <div class="actions">
-    <label class="toggle" title="when on, drag across parts to select them all; tap a part to add or remove it; drag with it off to scroll and pinch"><input id="paint-mode" type="checkbox" checked><span>paint</span></label>
-    <button id="btn-merge" class="btn" type="button" disabled>Merge</button>
-    <label class="toggle" title="when on, Merge also makes the mirror composite: the parts under the composite folded across the axis"><input id="mirror-merges" type="checkbox" checked><span>mirror merges</span></label>
-    <button id="btn-unmerge" class="btn ghost warn" type="button" hidden>Unmerge</button>
-    <button id="btn-save" class="btn primary" type="button" disabled>Save</button>
-    <button id="btn-clear" class="btn ghost" type="button">Clear</button>
-  </div>
-</footer>
+<dialog id="sheet" aria-label="part details"></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -152,13 +442,45 @@ const mirrorEl = $('mirror-merges'), paintEl = $('paint-mode'), tray = $('tray')
 const sctx = stage.getContext('2d');
 const hl = document.createElement('canvas');                  // highlight layer, same device size as the stage
 const hctx = hl.getContext('2d');
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wide = window.matchMedia('(min-width: 980px)');
+
+// The eight stages of the reel. `built: false` stages are shown, named and explained, but do nothing yet.
+const CH = [
+  { id: 'capture', s: 'Capture', t: 'Capture', k: 'Photograph a finished drawing; the pipeline crops to the figure.',
+    g: '<b>Working copy:</b> a duplicate you can mark up, like a photocopy, while the original stays untouched.' },
+  { id: 'axis', s: 'Mirror axis', t: 'Find the mirror axis', k: 'Score every candidate axis by folding the drawing onto itself.',
+    g: '<b>Mirror match:</b> fold the page along the line and measure how much of the two halves overlap. 1.0 means they match exactly.' },
+  { id: 'split', s: 'Split', t: 'Split aggressively', k: 'Flood outward from every seed; every flood stops at black ink.',
+    g: '<b>Watershed:</b> picture rain filling valleys. The ink lines are ridges, so neighbouring pools never mix across them.' },
+  { id: 'merge', s: 'Merge', t: 'Merge intelligently', k: 'Merge across the weakest ink first. The slider picks where to cut the tree.',
+    g: '<b>Merge tree:</b> a family tree of regions. Cut low for many small parts, high for a few big ones. No new boundaries get drawn.' },
+  { id: 'review', s: 'Review', t: 'Review and pair', k: 'Tap a part and its mirror twin comes with it. Save the pair.',
+    g: '<b>IoU (intersection over union):</b> flip one shape onto the other and measure how much of their combined area they share.' },
+  { id: 'library', s: 'Library', t: 'Grow the library', k: 'Parts are stored once, linked to their source. Modes are only views.',
+    g: '<b>Render modes</b> are views, like changing the lighting on a sculpture. Greyscale, outline and recolor never alter the stored part.' },
+  { id: 'compose', s: 'Compose', t: 'Compose', k: 'Lock a few anchors; the engine fills open sockets, mirrored.', built: false,
+    g: '<b>Sockets</b> are attachment points, like LEGO studs. <b>Entropy order</b> fills the spot with the fewest valid options first, the way you would solve a Sudoku.' },
+  { id: 'export', s: 'Export', t: 'Recolor and export', k: 'Recolor without touching the parts, then export layers to Procreate.', built: false,
+    g: '<b>Non-destructive:</b> like a coloured gel over a stage light. Pull it off and the original colour is still there.' },
+];
 
 const S = {
-  meta: null, levels: [], level: 0, W: 0, H: 0, dpr: 1,
-  img: null, overlay: null, ids: null,                         // ids: Uint32Array of region ids per working pixel
+  meta: null, info: null, levels: [], level: 0, W: 0, H: 0, dpr: 1, ch: 1,
+  img: null, ids: null,                                        // ids: Uint32Array of region ids per working pixel
   regions: new Map(), selected: new Set(), twins: new Set(),
-  library: [], version: 0, busy: false, ready: false,
+  library: [], sources: [], version: 0, busy: false, ready: false,
+  overlay: 'fill', veil: null, inkImg: null, L0: null, tree: null, curve: null,
+  fold: 0, foldOn: false, flood: 1, seedsOn: true, inkOn: false,
+  libMode: 'original', libQuery: '',
 };
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window: nothing to remember */ } },
+};
+
+const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 7.2V5.2a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="3" y="7" width="10" height="7.4" rx="1.7" fill="currentColor"/></svg>';
+const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // ---------------------------------------------------------------- helpers
 async function api(path, opts) {
@@ -177,17 +499,281 @@ function loadImage(url) {
     im.src = url;
   });
 }
-const fmt = (n) => Number(n).toLocaleString();
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs, parent) { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
 let toastTimer = 0;
 function toast(msg, kind) {
   toastEl.textContent = msg;
   toastEl.className = kind || '';
-  toastEl.style.bottom = ($('controls').offsetHeight + 12) + 'px';   // just above the control bar, whatever its height
+  const dock = $('dock');
+  toastEl.style.bottom = ((dock.offsetHeight || 12) + 12) + 'px';   // just above the dock, whatever its height
   toastEl.dataset.show = '1';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastEl.dataset.show = ''; }, 2800);
 }
 const twinOf = (id) => { const r = S.regions.get(id); return r && r.twin != null ? r.twin : null; };
+const partName = (id) => id >= GROUP_ID_BASE ? `Group ${id - GROUP_ID_BASE + 1}` : `Part ${id}`;
+const shortId = (id) => { const m = /-(L\d+-r\d+)$/.exec(id); return m ? m[1] : id; };
+const tileName = (t) => t.name || shortId(t.id);
+function animate(ms, step, done) {                              // step(p) with p eased 0..1; one frame when motion is reduced
+  if (reduceMotion || ms <= 0) { step(1); if (done) done(); return () => {}; }
+  let raf = 0, t0 = 0, stopped = false;
+  const tick = (ts) => {
+    if (stopped) return;
+    if (!t0) t0 = ts;
+    const t = Math.min(1, (ts - t0) / ms), p = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    step(p);
+    if (t < 1) raf = requestAnimationFrame(tick); else if (done) done();
+  };
+  raf = requestAnimationFrame(tick);
+  return () => { stopped = true; cancelAnimationFrame(raf); };
+}
+
+// ---------------------------------------------------------------- stages (the rail, the caption, what each one shows)
+const rail = $('rail');
+CH.forEach((c, i) => {
+  const b = el('button', 'chap' + (c.built === false ? ' later' : ''));
+  b.type = 'button'; b.dataset.ch = String(i + 1); b.title = c.t + (c.built === false ? ' (not built yet)' : '');
+  b.innerHTML = `<span class="n mono">${String(i + 1).padStart(2, '0')}</span><span class="t">${esc(c.s)}</span>` + (c.built === false ? `<span class="lk" aria-label="not built yet">${LOCK}</span>` : '');
+  b.addEventListener('click', () => setChapter(i + 1));
+  rail.appendChild(b);
+});
+function placeDock() {                                          // one slider, one set of buttons: moved, never duplicated
+  const res = $('res'), actions = $('actions');
+  if (wide.matches) { $('res-slot').appendChild(res); $('actions-slot').appendChild(actions); $('panel').prepend($('nav')); }
+  else { $('dock').append(res, actions); $('nav-slot').appendChild($('nav')); }
+  showForChapter();
+}
+function showForChapter() {
+  for (const e of document.querySelectorAll('[data-chs]')) e.hidden = !e.dataset.chs.split(' ').includes(String(S.ch));
+  $('actions').hidden = S.ch !== 5;
+  document.body.classList.toggle('wide', S.ch >= 6);
+}
+let stopAnim = () => {};
+function setChapter(n, opts) {
+  n = Math.max(1, Math.min(CH.length, n | 0));
+  const c = CH[n - 1], changed = n !== S.ch || !!(opts && opts.first);
+  S.ch = n; document.body.dataset.ch = String(n);
+  for (const b of rail.children) { if (Number(b.dataset.ch) === n) { b.setAttribute('aria-current', 'step'); if (changed && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else b.removeAttribute('aria-current'); }
+  $('cap-n').textContent = String(n).padStart(2, '0') + ' / ' + String(CH.length).padStart(2, '0');
+  $('cap-t').textContent = c.t; $('cap-l').textContent = c.k;
+  $('gloss').innerHTML = c.g; $('gloss').hidden = n === 6; $('lib-gloss').innerHTML = CH[5].g;
+  const nxt = CH[n];
+  $('next').hidden = !nxt || n >= 6; if (nxt) $('next').textContent = `Next · ${nxt.t} →`;
+  showForChapter();
+  if (!(opts && opts.silent)) {
+    try { history.replaceState(null, '', '#' + c.id); } catch (e) { /* file: or sandboxed */ }
+    if (S.meta) store.set('bc.ch.' + S.meta.session_id, String(n));
+  }
+  stopAnim(); stopAnim = () => {};
+  $('axis-tag').hidden = true; $('mirror-tag').hidden = true;
+  if (!S.ready) return;
+  layout();
+  if (n === 1) enterCapture(changed);
+  else if (n === 2) enterAxis(changed);
+  else if (n === 3) enterSplit(changed);
+  else if (n === 4) enterMerge();
+  else if (n === 5) { render(); updateInfo(); }
+  else if (n === 6) enterLibrary();
+  else if (n === 8) renderPalette($('palette-later'));
+}
+$('next').addEventListener('click', () => { setChapter(S.ch + 1); window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); });
+window.addEventListener('hashchange', () => { const i = CH.findIndex((c) => '#' + c.id === location.hash); if (i >= 0 && i + 1 !== S.ch) setChapter(i + 1); });
+
+// ---------------------------------------------------------------- 01 capture
+function fillCapture() {
+  const m = S.meta, src = m.source || {}, crop = m.crop || {}, w = m.working || {}, fb = crop.figure_box || {};
+  $('cap-file').textContent = src.filename || '?';
+  $('cap-size').textContent = `Photo · ${fmt(src.width || 0)} × ${fmt(src.height || 0)} px` + (src.exif_orientation && src.exif_orientation !== 1 ? ' · turned upright from its EXIF tag' : '');
+  const scale = Number(w.scale || 1);
+  const cover = S.info.figure_area && S.W ? Math.round(100 * S.info.figure_area / (S.W * S.H)) : null;
+  const steps = [
+    ['Find the drawing on the page', fb.w ? `figure box ${fmt(fb.w)} × ${fmt(fb.h)} px` : ''],
+    ['Crop with a margin, centered on the figure', crop.w ? `${fmt(crop.w)} × ${fmt(crop.h)} px · margin ${fmt(crop.margin_px || 0)} px` : ''],
+    ['Make a working copy', `${fmt(w.width || S.W)} × ${fmt(w.height || S.H)} px` + (scale < 0.999 ? ` · ${Math.round(scale * 100)}% of the photo` : ' · full size') + ' · the original stays untouched'],
+    ['Mask out the paper', 'keep only the figure' + (cover != null ? ` · ${cover}% of the copy` : '')],
+  ];
+  const box = $('cap-steps'); box.textContent = '';
+  for (const [a, b] of steps) {
+    const s = el('div', 'step');
+    s.innerHTML = `<span class="chk">${CHECK}</span><span>${esc(a)}${b ? `<small>${esc(b)}</small>` : ''}</span>`;
+    box.appendChild(s);
+  }
+}
+async function enterCapture(play) {
+  const steps = [...$('cap-steps').children];
+  if (!S.veil) loadImage('/api/figure.png').then((im) => { S.veil = im; if (S.ch === 1) render(); }).catch(() => {});
+  if (play && !reduceMotion) {
+    steps.forEach((s) => s.classList.remove('on'));
+    const timers = steps.map((s, i) => setTimeout(() => { s.classList.add('on'); if (S.ch === 1) render(); }, 350 + i * 450));
+    stopAnim = () => { timers.forEach(clearTimeout); steps.forEach((s) => s.classList.add('on')); };
+  } else steps.forEach((s) => s.classList.add('on'));
+  render();
+}
+
+// ---------------------------------------------------------------- 02 mirror axis
+function niceTicks(lo, hi, n) {
+  const span = hi - lo, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  const step = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * mag, out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v));
+  return out;
+}
+function drawAxisChart(play) {
+  const svg = $('axis-chart'), c = S.curve;
+  svg.textContent = '';
+  if (!c || !c.points.length) return;
+  const CW = 500, CHh = 250, x0 = 46, y0 = 14, cw = CW - x0 - 10, chh = CHh - y0 - 40;
+  const xMin = c.x_min, xMax = c.x_max, yMax = 1;
+  const cx = (x) => x0 + (x - xMin) / (xMax - xMin) * cw, cy = (y) => y0 + chh - (y / yMax) * chh;
+  for (const v of [0, .2, .4, .6, .8, 1]) {
+    sv('line', { x1: x0, x2: x0 + cw, y1: cy(v), y2: cy(v), stroke: 'var(--line)', 'stroke-width': 1 }, svg);
+    sv('text', { x: x0 - 8, y: cy(v) + 4, 'text-anchor': 'end' }, svg).textContent = v.toFixed(1);
+  }
+  for (const v of niceTicks(xMin, xMax, 5)) sv('text', { x: cx(v), y: y0 + chh + 18, 'text-anchor': 'middle' }, svg).textContent = v;
+  sv('text', { x: x0 + cw / 2, y: CHh - 2, 'text-anchor': 'middle' }, svg).textContent = 'candidate axis position (px)';
+  const pts = c.points.map(([x, y]) => `${cx(x).toFixed(1)},${cy(y).toFixed(1)}`).join(' ');
+  const line = sv('polyline', { points: pts, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', pathLength: 1 }, svg);
+  const px = cx(c.axis_x), py = cy(c.score);
+  const peak = sv('g', {}, svg);
+  sv('line', { x1: px, x2: px, y1: y0, y2: y0 + chh, stroke: 'var(--ink)', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, peak);
+  sv('circle', { cx: px, cy: py, r: 7, fill: 'var(--surface)', stroke: 'var(--ink)', 'stroke-width': 2.5 }, peak);
+  if (play && !reduceMotion) {
+    line.style.strokeDasharray = '1'; line.style.strokeDashoffset = '1'; peak.style.opacity = '0';
+    return animate(1300, (p) => { line.style.strokeDashoffset = String(1 - p); S.sweep = p; render(); },
+      () => { peak.style.transition = 'opacity .3s'; peak.style.opacity = '1'; S.sweep = null; render(); });
+  }
+  return null;
+}
+function fillAxis() {
+  const ax = S.meta.axis || {}, f = S.meta.fold;
+  $('ax-x').textContent = ax.x != null ? `${Math.round(ax.x)} px` : '–';
+  $('ax-r').textContent = (S.curve ? S.curve.score : Number(ax.mirror_iou || ax.score || 0)).toFixed(2);
+  const parts = ['The score is the overlap of the figure with its own mirror image (IoU), so 1.00 is a perfect fold.'];
+  if (f && f.ink_on_folded_ink) {
+    $('ax-fold-wrap').hidden = false;
+    $('ax-fold').textContent = `ink on ink ${Math.round(f.ink_on_folded_ink.plain * 100)}% → ${Math.round(f.ink_on_folded_ink.fold * 100)}%`;
+    parts.push(`A hand-drawn half never mirrors exactly, so the fold then leans and bends to fit (tilt ${Number(f.rotation_deg).toFixed(2)}°). The solid line is that fitted centre; the dashed one is the straight axis.`);
+  }
+  if (Math.abs(Number((S.meta.working || {}).angle_deg || 0)) > 0.01) parts.push(`The working copy was straightened by ${Number(S.meta.working.angle_deg).toFixed(1)}° first.`);
+  $('ax-note').textContent = parts.join(' ');
+}
+async function enterAxis(play) {
+  if (!S.curve) { try { S.curve = await api('/api/axis/curve'); } catch (e) { S.curve = null; } }
+  if (S.ch !== 2) return;
+  fillAxis();
+  const stop = drawAxisChart(play);
+  if (stop) stopAnim = () => { stop(); S.sweep = null; drawAxisChart(false); };
+  render();
+}
+let stopFold = () => {};
+$('btn-fold').addEventListener('click', () => {
+  S.foldOn = !S.foldOn; $('btn-fold').setAttribute('aria-pressed', String(S.foldOn));
+  $('btn-fold').textContent = S.foldOn ? 'unfold' : 'fold to compare';
+  const from = S.fold, to = S.foldOn ? 1 : 0;
+  stopFold(); stopFold = animate(800, (p) => { S.fold = from + (to - from) * p; if (S.ch === 2) render(); });
+});
+
+// ---------------------------------------------------------------- 03 split
+function fillSplit() {
+  const c = S.meta.counts || {}, kv = $('split-kv');
+  const rows = [['Seeds', `every ink-free cell${c.cells ? ` (${fmt(c.cells)})` : ''}`], ['Walls', 'black ink only: dark and colourless'], ['Goal', 'too many pieces, on purpose']];
+  if (c.lines_completed) rows.push(['Faint lines', `${fmt(c.lines_completed)} recovered from the mirrored half`]);
+  if (c.gaps_bridged) rows.push(['Gaps', `${fmt(c.gaps_bridged)} bridged where a line stops and continues`]);
+  kv.textContent = '';
+  for (const [k, v] of rows) { kv.appendChild(el('dt', '', k)); kv.appendChild(el('dd', '', v)); }
+}
+async function loadL0() {
+  if (S.L0 && S.L0.version === S.version) return S.L0;
+  if (S.level === 0 && S.ids) return (S.L0 = { ids: S.ids, regions: S.regions, version: S.version });
+  const [labels, regions] = await Promise.all([loadImage(`/api/levels/0/labels.png?v=${S.version}`), api('/api/levels/0/regions')]);
+  return (S.L0 = { ids: decodeLabels(labels), regions: new Map(Object.entries(regions).map(([k, r]) => [Number(k), r])), version: S.version });
+}
+async function enterSplit(play) {
+  const total = (S.meta.counts && S.meta.counts.fragments) || (S.levels[0] && S.levels[0].n_regions) || 0;
+  $('frag-count').textContent = fmt(total);
+  render();
+  try { await loadL0(); } catch (e) { toast(e.message, 'err'); return; }
+  if (S.ch !== 3) return;
+  const stop = animate(play ? 1500 : 0, (p) => { S.flood = p; $('frag-count').textContent = fmt(Math.round(total * p)); render(); });
+  stopAnim = () => { stop(); S.flood = 1; $('frag-count').textContent = fmt(total); };
+}
+$('btn-seeds').addEventListener('click', () => { S.seedsOn = !S.seedsOn; $('btn-seeds').setAttribute('aria-pressed', String(S.seedsOn)); render(); });
+$('btn-ink').addEventListener('click', async () => {
+  S.inkOn = !S.inkOn; $('btn-ink').setAttribute('aria-pressed', String(S.inkOn));
+  if (S.inkOn && !S.inkImg) { try { S.inkImg = await loadImage('/api/ink.png'); } catch (e) { toast(e.message, 'err'); } }
+  render();
+});
+$('btn-replay').addEventListener('click', () => { stopAnim(); enterSplit(true); });
+
+// ---------------------------------------------------------------- 04 merge: ticks and the merge tree
+function fillTicks() {
+  const box = $('ticks'); box.textContent = '';
+  const n = S.levels.length;
+  if (n < 2) return;
+  const stops = n <= 4 ? S.levels.map((_, i) => i) : [0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1];
+  for (const i of stops) { const s = el('span', '', String(S.levels[i].n_regions)); s.style.left = (i / (n - 1) * 100) + '%'; box.appendChild(s); }
+}
+const D = { nodes: null, n: 0, M: 0 };                          // the merge tree, laid out once
+function layoutTree(tree) {
+  const n = tree.n_leaves, merges = tree.merges, kids = new Map(), parent = new Map();
+  merges.forEach(([a, b, , id], i) => { kids.set(id, [a, b, i]); parent.set(a, id); parent.set(b, id); });
+  const roots = [];
+  for (let i = 1; i <= n; i++) if (!parent.has(i)) roots.push(i);
+  for (const [, , , id] of merges) if (!parent.has(id)) roots.push(id);
+  const x = new Map(), h = new Map();
+  let k = 0;
+  const visit = (root) => {                                    // iterative post-order: leaves get their slot left to right
+    const stack = [[root, 0]];
+    while (stack.length) {
+      const top = stack[stack.length - 1], node = top[0], kd = kids.get(node);
+      if (!kd) { x.set(node, k++); h.set(node, 0); stack.pop(); continue; }
+      if (top[1] < 2) { stack.push([kd[top[1]++], 0]); continue; }
+      x.set(node, (x.get(kd[0]) + x.get(kd[1])) / 2); h.set(node, kd[2] + 1); stack.pop();
+    }
+  };
+  roots.forEach(visit);
+  D.n = n; D.M = merges.length; D.x = x; D.h = h; D.parent = parent; D.merges = merges;
+}
+function drawTree() {
+  const svg = $('dendro');
+  svg.textContent = '';
+  if (!S.tree || !D.x) return;
+  const n = D.n, M = Math.max(1, D.M);
+  const dx = (i) => 12 + i * (476 / Math.max(1, n - 1)), dy = (hh) => 226 - (hh / M) * 204;
+  D.dy = dy; D.paths = []; D.leaves = [];
+  D.merges.forEach(([a, b, , id]) => {
+    const p = sv('path', { d: `M${dx(D.x.get(a)).toFixed(1)},${dy(D.h.get(a)).toFixed(1)}V${dy(D.h.get(id)).toFixed(1)}H${dx(D.x.get(b)).toFixed(1)}V${dy(D.h.get(b)).toFixed(1)}`, fill: 'none', 'stroke-width': n > 80 ? 1.1 : 2.2, stroke: 'var(--line)' }, svg);
+    D.paths.push([id, p]);
+  });
+  for (let i = 1; i <= n; i++) D.leaves.push([i, sv('line', { x1: dx(D.x.get(i)), x2: dx(D.x.get(i)), y1: 228, y2: 236, 'stroke-width': n > 80 ? 1.6 : 4, 'stroke-linecap': 'round', stroke: 'var(--muted)' }, svg)]);
+  D.cut = sv('line', { x1: 4, x2: 496, y1: 0, y2: 0, stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '7 5' }, svg);
+  D.cutTxt = sv('text', { x: 496, y: 0, 'text-anchor': 'end', style: 'font-family:var(--f-mono);font-size:12px;fill:var(--accent)' }, svg);
+  D.cutTxt.textContent = 'cut';
+  colorTree();
+}
+function colorTree() {
+  if (!D.paths || !S.levels.length) return;
+  const nMerges = (S.levels[S.level] || {}).n_merges || 0;
+  const root = (node) => { let r = node; for (;;) { const p = D.parent.get(r); if (p == null || D.h.get(p) > nMerges) return r; r = p; } };
+  const colour = (r) => { const c = regionRGB(r); return `rgb(${c[0]},${c[1]},${c[2]})`; };
+  for (const [id, p] of D.paths) p.setAttribute('stroke', D.h.get(id) <= nMerges ? colour(root(id)) : 'var(--line)');
+  for (const [id, l] of D.leaves) l.setAttribute('stroke', colour(root(id)));
+  const y = D.dy(nMerges + 0.5);
+  D.cut.setAttribute('y1', y); D.cut.setAttribute('y2', y); D.cutTxt.setAttribute('y', Math.max(12, y - 6));
+  const groups = (S.info && S.info.groups) || [];
+  $('tree-note').textContent = `${fmt(D.n)} fragments at the bottom, one branch per merge. Everything under the dashed line is merged; each colour is one part on the drawing.`
+    + (groups.length ? ` ${groups.length} composite${groups.length === 1 ? '' : 's'} you made stay pinned whatever the cut.` : '');
+}
+async function enterMerge() {
+  render();
+  if (!S.tree) {
+    try { S.tree = await api('/api/tree'); layoutTree(S.tree); } catch (e) { S.tree = null; return; }
+  }
+  if (S.ch === 4) drawTree();
+}
 
 // ---------------------------------------------------------------- level loading
 function decodeLabels(im) {
@@ -204,26 +790,25 @@ let loadToken = 0;
 async function loadLevel(i) {
   i = Math.max(0, Math.min(S.levels.length - 1, i | 0));
   const token = ++loadToken;
-  S.level = i; slider.value = String(i); stage.dataset.level = '';
+  S.level = i; setSlider(i); stage.dataset.level = '';
   previewLevel(i);
   setBusy(true);
   try {
     const v = S.version;
-    const [labels, overlay, regions] = await Promise.all([
+    const [labels, regions] = await Promise.all([
       loadImage(`/api/levels/${i}/labels.png?v=${v}`),
-      loadImage(`/api/levels/${i}/overlay.png?v=${v}`),
       api(`/api/levels/${i}/regions`),
     ]);
     if (token !== loadToken) return;                          // a newer level request superseded this one
     S.ids = decodeLabels(labels);
-    S.overlay = overlay;
     S.regions = new Map(Object.entries(regions).map(([k, r]) => [Number(k), r]));
     for (const id of [...S.selected]) if (!S.regions.has(id)) S.selected.delete(id);   // ids survive across levels when unchanged
+    ovCache.key = '';
     deriveTwins();
     stageMsg.textContent = '';
-    updateReadout(); render(); updateInfo();
+    updateReadout(); render(); updateInfo(); colorTree();
     stage.dataset.level = String(i);
-    if (!S.ready) { S.ready = true; stage.dataset.ready = '1'; }
+    if (!S.ready) { S.ready = true; stage.dataset.ready = '1'; setChapter(S.ch, { silent: true, first: true }); }
   } catch (e) {
     if (token === loadToken) { stageMsg.textContent = 'level failed to load'; toast(e.message, 'err'); }
   } finally {
@@ -238,6 +823,7 @@ async function refreshRegions() {
     deriveTwins(); updateReadout(); render(); updateInfo();
   } catch (e) { toast(e.message, 'err'); }
 }
+function setSlider(i) { slider.value = String(i); slider.style.setProperty('--fill', (S.levels.length > 1 ? i / (S.levels.length - 1) * 100 : 0) + '%'); }
 function previewLevel(i) {
   const lv = S.levels[i];
   if (!lv) return;
@@ -252,7 +838,7 @@ function updateReadout() {
 let sliderTimer = 0;
 function requestLevel(i, immediate) {
   i = Math.max(0, Math.min(S.levels.length - 1, i | 0));
-  slider.value = String(i); previewLevel(i);
+  setSlider(i); previewLevel(i);
   clearTimeout(sliderTimer);
   if (immediate) loadLevel(i); else sliderTimer = setTimeout(() => loadLevel(i), 140);
 }
@@ -290,35 +876,62 @@ function regionAt(clientX, clientY) {
 }
 function setBusy(b) { S.busy = b; stage.dataset.busy = b ? '1' : ''; updateButtons(); }
 function updateButtons() {
-  const n = S.selected.size;
+  const n = S.selected.size, total = n + S.twins.size;
   btnMerge.disabled = S.busy || n < 2;
   btnSave.disabled = S.busy || n === 0;
+  btnSave.textContent = n === 0 ? 'Save to tray' : (n === 1 && S.twins.size === 1) ? 'Save pair to tray' : total === 1 ? 'Save part to tray' : `Save ${total} parts to tray`;
   btnClear.disabled = S.busy;
   const hasGroup = [...S.selected, ...S.twins].some((id) => id >= GROUP_ID_BASE);
   btnUnmerge.hidden = !hasGroup; btnUnmerge.disabled = S.busy || !hasGroup;
 }
 function updateInfo() {
+  const tag = $('mirror-tag');
+  tag.hidden = true;
   if (!S.selected.size) {
-    infoEl.innerHTML = paintEl.checked ? '<span>Drag across parts to select them · tap a part to add or remove it · Merge makes a composite</span>'
-                                       : '<span>Tap a part · its mirror twin co-selects · pinch to zoom</span>';
+    infoEl.innerHTML = `<span class="hint">${paintEl.checked ? 'Drag across parts to select them · tap a part to add or remove it · Merge makes a composite'
+                                                              : 'Tap a part · its mirror twin co-selects · pinch to zoom'}</span>`;
     return;
   }
-  const parts = [];
-  let i = 0;
+  const rows = [], ious = [];
+  let shown = 0, onAxis = 0, lone = 0;
   for (const id of S.selected) {
     const r = S.regions.get(id); if (!r) continue;
-    if (i++ >= 2) { parts.push(`<span>+${S.selected.size - 2} more</span>`); break; }
-    const name = id >= GROUP_ID_BASE ? `group ${id - GROUP_ID_BASE}` : `part ${id}`;
-    let s = `<span><i class="dot sel"></i><span class="part">${name}</span> · ${fmt(r.area)} px${r.saved_tile_id ? ' · saved' : ''}</span>`;
     const t = r.twin != null ? S.regions.get(r.twin) : null;
-    if (t) s += `<span><i class="dot twin"></i><span class="part">${r.twin >= GROUP_ID_BASE ? 'group ' + (r.twin - GROUP_ID_BASE) : 'part ' + r.twin}</span> · mirror twin · IoU ${Number(r.iou).toFixed(2)}</span>`;
-    else s += `<span>· ${r.side === 'axis' ? 'on axis' : 'no twin'}</span>`;
-    parts.push(s);
+    if (t && r.iou != null && !(S.selected.has(r.twin) && r.twin < id)) ious.push(Number(r.iou));
+    if (!t) { if (r.side === 'axis') onAxis++; else lone++; }
+    if (shown >= 3) continue;
+    shown++;
+    const saved = (x) => x.saved_tile_id ? `<span class="saved">saved${x.saved_name ? ' as ' + esc(x.saved_name) : ''}</span>` : '';
+    rows.push(`<div class="row"><i class="dot sel"></i><b>${partName(id)}</b><span>· selected${t ? '' : r.side === 'axis' ? ' · on axis' : ' · no twin'}</span><span class="px">${fmt(r.area)} px</span>${saved(r)}</div>`);
+    if (t && !S.selected.has(r.twin)) rows.push(`<div class="row"><i class="dot twin"></i><b>${partName(r.twin)}</b><span>· mirror twin, auto-selected</span><span class="px">${fmt(t.area)} px</span>${saved(t)}</div>`);
   }
-  infoEl.innerHTML = parts.join('');
+  if (S.selected.size > shown) rows.push(`<div class="row hint">+${S.selected.size - shown} more selected</div>`);
+  const match = ious.length === 0 ? (onAxis && !lone ? 'on axis' : 'no twin')
+    : ious.length === 1 ? ious[0].toFixed(2) : `${Math.min(...ious).toFixed(2)}–${Math.max(...ious).toFixed(2)}`;
+  rows.push(`<div class="readout"><div><span class="lbl">Mirror match (IoU)</span><b${ious.length ? '' : ' class="small"'}>${match}</b></div><div><span class="lbl">Grouping</span><b class="small">you decide</b></div></div>`);
+  infoEl.innerHTML = rows.join('');
+  // the tag on the axis, between a single part and its twin
+  if (S.ch === 5 && S.selected.size === 1 && S.twins.size === 1) {
+    const id = [...S.selected][0], r = S.regions.get(id), t = S.regions.get(r.twin);
+    if (r && t && r.iou != null) {
+      const top = Math.min(r.bbox[1], t.bbox[1]);
+      tag.textContent = `mirror twin · IoU ${Number(r.iou).toFixed(2)}`;
+      tag.style.left = (axisAt((r.centroid[1] + t.centroid[1]) / 2) / S.W * 100) + '%';
+      tag.style.top = `max(4px, calc(${(top / S.H * 100).toFixed(2)}% - 28px))`;
+      tag.hidden = false;
+    }
+  }
 }
 
 // ---------------------------------------------------------------- drawing
+function layout() {                                             // the print must fit the window beside the cards
+  if (S.W && wide.matches) {
+    const top = $('art').offsetParent ? $('main').getBoundingClientRect().top + window.scrollY : 60;
+    const availH = window.innerHeight - Math.max(14, top) - 14 - 50;
+    const room = ($('main').clientWidth - 32) * 0.46;            // never squeeze the cards on a narrow window
+    document.documentElement.style.setProperty('--art-w', Math.round(Math.max(280, Math.min(600, room, availH * S.W / S.H))) + 'px');
+  }
+}
 function sizeStage() {
   const cssW = Math.max(1, Math.floor(stageWrap.clientWidth));
   const cssH = Math.max(1, Math.round(cssW * S.H / S.W));
@@ -328,29 +941,144 @@ function sizeStage() {
   stage.style.width = cssW + 'px'; stage.style.height = cssH + 'px';
   S.dpr = dpr;
 }
-function render() {
-  if (!S.img || !S.W) return;
-  sizeStage();
+function axisAt(y) {                                            // the fitted centre line (a straight axis without a fold)
+  const c = S.info && S.info.axis_curve;
+  if (!c || !c.length) return S.meta.axis ? S.meta.axis.x : S.W / 2;
+  if (y <= c[0][0]) return c[0][1];
+  for (let i = 1; i < c.length; i++) if (y <= c[i][0]) { const a = c[i - 1], b = c[i]; return a[1] + (b[1] - a[1]) * (y - a[0]) / Math.max(1e-6, b[0] - a[0]); }
+  return c[c.length - 1][1];
+}
+const pack = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;    // little-endian RGBA
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+function fixEndian(img) { if (LITTLE_ENDIAN) return; const d = img.data; for (let i = 0; i < d.length; i += 4) { const a = d[i], b = d[i + 1], g = d[i + 2], rr = d[i + 3]; d[i] = rr; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; } }
+// One colour per part, shared by mirror twins and by the merge tree, so the same part reads the same everywhere.
+function regionRGB(id, regions) {
+  const r = (regions || S.regions).get(id), key = r && r.twin != null ? Math.min(id, r.twin) : id;
+  const hue = (key * 137.508) % 360, s = .46, l = .6;
+  const k = (n) => (n + hue / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+const ovCache = { key: '', canvas: document.createElement('canvas') };
+const ov0Cache = { key: '', canvas: document.createElement('canvas') };
+function buildOverlay(cache, key, ids, regions, fillAlpha, line) {
   const w = stage.width, h = stage.height;
+  key += `|${w}x${h}|${fillAlpha}|${line}`;
+  if (cache.key === key) return cache.canvas;
+  const c = cache.canvas; c.width = w; c.height = h;
+  const cx = c.getContext('2d'), img = cx.createImageData(w, h), px = new Uint32Array(img.data.buffer);
+  const W = S.W, H = S.H, colX = new Int32Array(w);
+  for (let x = 0; x < w; x++) colX[x] = Math.min(W - 1, ((x + 0.5) * W / w) | 0);
+  const table = new Map(), fa = Math.round(fillAlpha * 255);
+  let prev = new Uint32Array(w), row = new Uint32Array(w);
+  for (let y = 0; y < h; y++) {
+    const base = Math.min(H - 1, ((y + 0.5) * H / h) | 0) * W, o = y * w;
+    let lastId = -1, lastCol = 0;
+    for (let x = 0; x < w; x++) {
+      const id = ids[base + colX[x]];
+      row[x] = id;
+      if (id !== lastId) {
+        lastId = id; lastCol = 0;
+        if (id && fa) { lastCol = table.get(id); if (lastCol === undefined) { const rgb = regionRGB(id, regions); lastCol = pack(rgb[0], rgb[1], rgb[2], fa); table.set(id, lastCol); } }
+      }
+      let p = lastCol;
+      if (line) {
+        if (x > 0 && row[x - 1] !== id) { p = line; px[o + x - 1] = line; }
+        if (y > 0 && prev[x] !== id) { p = line; px[o + x - w] = line; }
+      }
+      px[o + x] = p;
+    }
+    const t = prev; prev = row; row = t;
+  }
+  fixEndian(img);
+  cx.putImageData(img, 0, 0);
+  cache.key = key;
+  return c;
+}
+const LINE_LIGHT = pack(255, 255, 255, 215), LINE_MAGENTA = pack(214, 51, 171, 255), LINE_AMBER = pack(255, 196, 64, 235);
+function render() {
+  if (!S.img || !S.W || S.ch > 5) return;
+  sizeStage();
+  const w = stage.width, h = stage.height, sx = w / S.W, sy = h / S.H, dpr = S.dpr, ch = S.ch;
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.clearRect(0, 0, w, h);
   sctx.imageSmoothingEnabled = true;
   sctx.drawImage(S.img, 0, 0, w, h);
-  if (S.overlay) sctx.drawImage(S.overlay, 0, 0, w, h);
-  if (S.ids && (S.selected.size || S.twins.size)) { paintHighlights(); sctx.drawImage(hl, 0, 0); }
-  drawVectors();
+  const dim = (a) => { sctx.fillStyle = `rgba(22,33,49,${a})`; sctx.fillRect(0, 0, w, h); };
+  if (ch === 1) {
+    const done = [...$('cap-steps').children].map((s) => s.classList.contains('on'));
+    if (S.veil && done[3]) sctx.drawImage(S.veil, 0, 0, w, h);
+    const b = S.info && S.info.figure_box;
+    if (b && done[0]) {                                           // crop marks on the figure box
+      const L = 26 * dpr, x0 = b[0] * sx, y0 = b[1] * sy, x1 = (b[0] + b[2]) * sx, y1 = (b[1] + b[3]) * sy;
+      sctx.lineWidth = 3 * dpr; sctx.strokeStyle = '#162131'; sctx.lineCap = 'square';
+      sctx.beginPath();
+      for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) { sctx.moveTo(x + dx * L, y); sctx.lineTo(x, y); sctx.lineTo(x, y + dy * L); }
+      sctx.stroke();
+    }
+  } else if (ch === 2) {
+    const ax = S.meta.axis ? S.meta.axis.x : S.W / 2, tag = $('axis-tag');
+    if (S.fold > 0.001) {                                         // the left half turning over onto the right, like a page
+      sctx.save();
+      sctx.beginPath(); sctx.rect(0, 0, w, h); sctx.clip();
+      sctx.translate(ax * sx, 0); sctx.scale(Math.cos(Math.PI * S.fold), 1); sctx.translate(-ax * sx, 0);
+      sctx.globalAlpha = 0.55 + 0.45 * (1 - S.fold);
+      sctx.drawImage(S.img, 0, 0, ax, S.H, 0, 0, ax * sx, h);
+      sctx.restore();
+    }
+    sctx.save();
+    if (S.sweep != null && S.curve) {                             // the search: a dashed candidate line sweeping across
+      const x = S.curve.x_min + (S.curve.x_max - S.curve.x_min) * S.sweep;
+      sctx.setLineDash([8 * dpr, 6 * dpr]); sctx.lineWidth = 2 * dpr; sctx.strokeStyle = '#2a73b3';
+      sctx.beginPath(); sctx.moveTo(x * sx, 0); sctx.lineTo(x * sx, h); sctx.stroke();
+      let r = 0; for (const p of S.curve.points) { if (p[0] <= x) r = p[1]; else break; }
+      tag.textContent = `match = ${r.toFixed(2)}`; tag.style.left = (x / S.W * 100) + '%'; tag.style.top = '8px'; tag.hidden = false;
+    } else {
+      sctx.setLineDash([5 * dpr, 6 * dpr]); sctx.lineWidth = 1.2 * dpr; sctx.strokeStyle = 'rgba(42,115,179,.75)';
+      sctx.beginPath(); sctx.moveTo(ax * sx, 0); sctx.lineTo(ax * sx, h); sctx.stroke();
+      const c = S.info && S.info.axis_curve;
+      if (c && c.length > 1 && S.info.has_fold) {
+        sctx.setLineDash([]); sctx.lineWidth = 2 * dpr; sctx.strokeStyle = '#2a73b3';
+        sctx.beginPath(); c.forEach(([y, x], i) => (i ? sctx.lineTo(x * sx, y * sy) : sctx.moveTo(x * sx, y * sy))); sctx.stroke();
+      } else { sctx.setLineDash([]); sctx.lineWidth = 2 * dpr; sctx.strokeStyle = '#2a73b3'; sctx.beginPath(); sctx.moveTo(ax * sx, 0); sctx.lineTo(ax * sx, h); sctx.stroke(); }
+      tag.textContent = `axis x = ${Math.round(ax)} px`; tag.style.left = (ax / S.W * 100) + '%'; tag.style.top = '8px'; tag.hidden = false;
+    }
+    sctx.restore();
+  } else if (ch === 3) {
+    dim(0.28);
+    const L0 = S.L0, ax = S.meta.axis ? S.meta.axis.x : S.W / 2;
+    if (L0 && L0.version === S.version) {
+      const ovc = buildOverlay(ov0Cache, `L0|${S.version}`, L0.ids, L0.regions, 0.5, LINE_AMBER);
+      const R = Math.hypot(Math.max(ax, S.W - ax) * sx, h / 2) * S.flood;
+      sctx.save(); sctx.beginPath(); sctx.arc(ax * sx, h / 2, R, 0, Math.PI * 2); sctx.clip(); sctx.drawImage(ovc, 0, 0); sctx.restore();
+      if (S.inkOn && S.inkImg) sctx.drawImage(S.inkImg, 0, 0, w, h);
+      if (S.seedsOn) {                                            // one seed per fragment, nearest the axis first
+        sctx.fillStyle = '#ffd76e'; sctx.strokeStyle = 'rgba(20,30,45,.6)'; sctx.lineWidth = 1 * dpr;
+        const rad = Math.max(1.6, 2.6 * dpr * Math.min(1, 140 / Math.sqrt(L0.regions.size + 1) / 6 + .45));
+        for (const [, r] of L0.regions) {
+          const cxp = r.centroid[0] * sx, cyp = r.centroid[1] * sy;
+          if (Math.hypot(cxp - ax * sx, cyp - h / 2) > R * 1.25 + 4) continue;
+          sctx.beginPath(); sctx.arc(cxp, cyp, rad, 0, Math.PI * 2); sctx.fill(); sctx.stroke();
+        }
+      }
+    }
+  } else if (S.ids) {
+    const mode = S.overlay;
+    if (ch === 4) { if (mode !== 'off') dim(mode === 'fill' ? 0.25 : 0); }
+    if (mode === 'fill') sctx.drawImage(buildOverlay(ovCache, `L${S.level}|${S.version}`, S.ids, S.regions, ch === 4 ? 0.5 : 0.3, LINE_LIGHT), 0, 0);
+    else if (mode === 'lines') sctx.drawImage(buildOverlay(ovCache, `L${S.level}|${S.version}`, S.ids, S.regions, 0, LINE_MAGENTA), 0, 0);
+    if (S.selected.size || S.twins.size) { paintHighlights(); sctx.drawImage(hl, 0, 0); }
+    drawVectors();
+  }
 }
-const pack = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;    // little-endian RGBA
-const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
 function paintHighlights() {
   const w = hl.width, h = hl.height, W = S.W, H = S.H, ids = S.ids;
   hctx.clearRect(0, 0, w, h);
   let maxId = 0;
   for (const id of S.selected) maxId = Math.max(maxId, id);
   for (const id of S.twins) maxId = Math.max(maxId, id);
-  const kind = new Uint8Array(maxId + 1);
-  for (const id of S.selected) kind[id] = 1;
-  for (const id of S.twins) kind[id] = 2;
+  const kindOf = new Map();
+  for (const id of S.selected) kindOf.set(id, 1);
+  for (const id of S.twins) kindOf.set(id, 2);
   // only the union of the highlighted regions' bboxes (in stage px) needs scanning
   const r = Math.max(1, Math.round(S.dpr * 0.75));
   let x0 = w, y0 = h, x1 = 0, y1 = 0;
@@ -368,15 +1096,16 @@ function paintHighlights() {
   const sid = new Uint32Array(bw * bh), kinds = new Uint8Array(bw * bh);
   const colX = new Int32Array(bw);
   for (let x = 0; x < bw; x++) colX[x] = Math.min(W - 1, ((x0 + x) * W / w) | 0);
-  const fill = [0, pack(0x13, 0x9f, 0xca, 0x6e), pack(0xd9, 0x8d, 0x12, 0x6e)];
+  const fill = [0, pack(0x13, 0x9f, 0xca, 0x7a), pack(0xd9, 0x8d, 0x12, 0x7a)];
   const strong = [0, pack(0x13, 0x9f, 0xca, 0xff), pack(0xd9, 0x8d, 0x12, 0xff)];
   for (let y = 0; y < bh; y++) {
     const row = Math.min(H - 1, ((y0 + y) * H / h) | 0) * W, o = y * bw;
+    let lastId = -1, lastK = 0;
     for (let x = 0; x < bw; x++) {
       const id = ids[row + colX[x]];
       sid[o + x] = id;
-      const k = id <= maxId ? kind[id] : 0;
-      if (k) { kinds[o + x] = k; px[o + x] = fill[k]; }
+      if (id !== lastId) { lastId = id; lastK = kindOf.get(id) || 0; }
+      if (lastK) { kinds[o + x] = lastK; px[o + x] = fill[lastK]; }
     }
   }
   const stamp = (cx, cy, c) => {
@@ -394,7 +1123,7 @@ function paintHighlights() {
       if (kk) stamp(x, y, strong[kk]);
     }
   }
-  if (!LITTLE_ENDIAN) { const d = img.data; for (let i = 0; i < d.length; i += 4) { const a = d[i], b = d[i + 1], g = d[i + 2], rr = d[i + 3]; d[i] = rr; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; } }
+  fixEndian(img);
   hctx.putImageData(img, x0, y0);
 }
 function drawVectors() {
@@ -403,25 +1132,33 @@ function drawVectors() {
   // the mirror axis
   if (S.meta && S.meta.axis) {
     const ax = S.meta.axis.x * sx;
-    sctx.setLineDash([5 * dpr, 6 * dpr]); sctx.lineWidth = 1 * dpr; sctx.strokeStyle = 'rgba(217,141,18,0.55)';
+    sctx.setLineDash([5 * dpr, 6 * dpr]); sctx.lineWidth = 1 * dpr; sctx.strokeStyle = 'rgba(217,141,18,0.6)';
     sctx.beginPath(); sctx.moveTo(ax, 0); sctx.lineTo(ax, h); sctx.stroke();
   }
-  // dashed link between a selected part and its twin
-  sctx.setLineDash([4 * dpr, 4 * dpr]); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#d98d12';
-  for (const s of S.selected) {
-    const t = twinOf(s); if (t == null || !S.regions.has(s) || !S.regions.has(t)) continue;
-    const a = S.regions.get(s).centroid, b = S.regions.get(t).centroid;
-    sctx.beginPath(); sctx.moveTo(a[0] * sx, a[1] * sy); sctx.lineTo(b[0] * sx, b[1] * sy); sctx.stroke();
-  }
-  // a green dot on every part that is already in the library
-  sctx.setLineDash([]);
-  for (const [, r] of S.regions) {
-    if (!r.saved_tile_id) continue;
-    const c = r.centroid;
-    sctx.beginPath(); sctx.arc(c[0] * sx, c[1] * sy, 4.5 * dpr, 0, Math.PI * 2);
-    sctx.fillStyle = '#3f9a72'; sctx.fill(); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#fff'; sctx.stroke();
+  if (S.ch === 5) {
+    // dashed link between a selected part and its twin
+    sctx.setLineDash([6 * dpr, 5 * dpr]); sctx.lineWidth = 2 * dpr; sctx.strokeStyle = '#d98d12'; sctx.lineCap = 'round';
+    for (const s of S.selected) {
+      const t = twinOf(s); if (t == null || !S.regions.has(s) || !S.regions.has(t)) continue;
+      const a = S.regions.get(s).centroid, b = S.regions.get(t).centroid;
+      sctx.beginPath(); sctx.moveTo(a[0] * sx, a[1] * sy); sctx.lineTo(b[0] * sx, b[1] * sy); sctx.stroke();
+    }
+    // a green dot on every part that is already in the library
+    sctx.setLineDash([]);
+    for (const [, r] of S.regions) {
+      if (!r.saved_tile_id) continue;
+      const c = r.centroid;
+      sctx.beginPath(); sctx.arc(c[0] * sx, c[1] * sy, 4.5 * dpr, 0, Math.PI * 2);
+      sctx.fillStyle = '#3f9a72'; sctx.fill(); sctx.lineWidth = 1.5 * dpr; sctx.strokeStyle = '#fff'; sctx.stroke();
+    }
   }
   sctx.restore();
+}
+for (const b of $('overlay-modes').children) b.addEventListener('click', () => setOverlay(b.dataset.ov));
+function setOverlay(mode) {
+  S.overlay = mode; store.set('bc.overlay', mode);
+  for (const b of $('overlay-modes').children) b.setAttribute('aria-pressed', String(b.dataset.ov === mode));
+  render();
 }
 
 // ---------------------------------------------------------------- actions
@@ -431,7 +1168,7 @@ async function doMerge() {
   setBusy(true);
   try {
     const j = await post('/api/merge', { level: S.level, region_ids: ids, mirror: mirrorEl.checked });
-    S.version++;
+    S.version++; if (S.info) S.info.groups = j.groups;
     S.selected = new Set(j.created.slice(0, 1));                // the new group is selected, its mirror group follows as the twin
     toast(`Merged ${ids.length} parts into one` + (j.created.length > 1 ? ' (+ mirror)' : ''), 'ok');
     await loadLevel(S.level);
@@ -444,8 +1181,9 @@ async function doUnmerge() {                                     // acts on the 
     .sort((a, b) => b - a);                                     // highest index first so the others do not shift
   setBusy(true);
   try {
-    for (const k of idx) await post('/api/unmerge', { group_index: k });
-    S.version++; S.selected.clear();
+    let j = null;
+    for (const k of idx) j = await post('/api/unmerge', { group_index: k });
+    S.version++; S.selected.clear(); if (S.info && j) S.info.groups = j.groups;
     toast(`Unmerged ${idx.length} group${idx.length === 1 ? '' : 's'}`, 'ok');
     await loadLevel(S.level);
   } catch (e) { toast(e.message, 'err'); setBusy(false); }
@@ -455,41 +1193,64 @@ async function doSave() {
   if (S.busy || !ids.length) return;
   setBusy(true);
   try {
+    const before = new Set(S.library.map((t) => t.id));
     const j = await post('/api/save', { level: S.level, region_ids: ids });
     const n = (j.tiles || []).length;
     toast(`Saved ${n} tile${n === 1 ? '' : 's'} to the library`, 'ok');
+    S.selected.clear();
     await Promise.all([refreshLibrary(), refreshRegions()]);
+    for (const t of S.library) if (!before.has(t.id)) flyToTray(t);
   } catch (e) { toast(e.message, 'err'); }
   finally { setBusy(false); }
 }
+function flyToTray(t) {                                         // the cut-out lifts off the drawing and lands in its tray slot
+  const card = tray.querySelector(`[data-id="${CSS.escape(t.id)}"] img`);
+  if (reduceMotion || !card || !t.bbox || t.bbox[2] == null || !t.in_session || S.ch !== 5) return;
+  const sr = stage.getBoundingClientRect(), k = sr.width / S.W, to = card.getBoundingClientRect();
+  if (!to.width || to.bottom < 0 || to.top > window.innerHeight) return;
+  const from = { x: sr.left + t.bbox[0] * k, y: sr.top + t.bbox[1] * k, w: t.bbox[2] * k, h: t.bbox[3] * k };
+  const s = Math.min(to.width / t.bbox[2], to.height / t.bbox[3]), tw = t.bbox[2] * s, th = t.bbox[3] * s;
+  const im = new Image();
+  im.src = t.png_url; im.className = 'fly'; im.alt = '';
+  Object.assign(im.style, { left: from.x + 'px', top: from.y + 'px', width: from.w + 'px', height: from.h + 'px' });
+  document.body.appendChild(im);
+  card.style.opacity = '0';
+  const a = im.animate([{ transform: 'translate(0,0) scale(1)' }, { transform: `translate(${to.left + (to.width - tw) / 2 - from.x}px,${to.top + (to.height - th) / 2 - from.y}px) scale(${tw / from.w})` }],
+    { duration: 750, easing: 'cubic-bezier(.65,0,.35,1)' });
+  const end = () => { im.remove(); card.style.opacity = ''; };
+  a.onfinish = end; a.oncancel = end;
+}
 
-// ---------------------------------------------------------------- tray
-const shortId = (id) => { const m = /-(L\d+-r\d+)$/.exec(id); return m ? m[1] : id; };
+// ---------------------------------------------------------------- tray (what this drawing has given so far)
 async function refreshLibrary() {
   try { const j = await api('/api/library'); S.library = j.tiles || []; }
   catch (e) { S.library = []; }
   renderTray();
   const n = S.library.length;
-  trayCount.textContent = n ? `${n} tile${n === 1 ? '' : 's'}` : '';
   const chip = $('hdr-lib');
-  if (S.libraryAvailable) { chip.textContent = `${n} tile${n === 1 ? '' : 's'} in library`; chip.className = 'chip mono ok'; }
-  else { chip.textContent = 'library unavailable'; chip.className = 'chip mono err'; }
+  if (S.libraryAvailable) { chip.textContent = `${n} tile${n === 1 ? '' : 's'} in library`; chip.className = 'pill mono ok'; }
+  else { chip.textContent = 'library unavailable'; chip.className = 'pill mono err'; }
+  if (S.ch === 6) enterLibrary();
 }
+const byId = (id) => S.library.find((t) => t.id === id);
 function renderTray() {
   tray.textContent = '';
-  const tiles = [...S.library].reverse();                       // newest first
+  const sha = S.meta && S.meta.source && S.meta.source.sha256;
+  const tiles = S.library.filter((t) => !t.source || !t.source.sha256 || t.source.sha256 === sha).reverse();   // newest first
+  trayCount.textContent = tiles.length ? `${tiles.length} tile${tiles.length === 1 ? '' : 's'}` : '';
   for (const t of tiles) {
-    const card = document.createElement('div');
-    card.className = 'tile'; card.dataset.id = t.id; card.title = t.id;
+    const card = el('div', 'tile'); card.dataset.id = t.id; card.title = t.id;
+    const slot = el('div', 'slot');
     const im = document.createElement('img');
-    im.src = t.png_url; im.alt = t.id; im.loading = 'lazy'; im.decoding = 'async';
-    const lab = document.createElement('div'); lab.className = 'tile-id mono'; lab.textContent = shortId(t.id);
-    const badges = document.createElement('div'); badges.className = 'badges';
-    const side = document.createElement('span'); side.className = 'badge' + (t.side === 'axis' ? ' axis' : ''); side.textContent = t.side === 'axis' ? 'on axis' : (t.side || '?');
-    badges.appendChild(side);
-    if (t.composite) { const c = document.createElement('span'); c.className = 'badge composite'; c.textContent = `composite · ${t.members.length} part${t.members.length === 1 ? '' : 's'}`; c.title = 'components: ' + t.members.join(', '); badges.appendChild(c); }
-    if (t.pair_tile_id) { const p = document.createElement('span'); p.className = 'badge pair'; p.textContent = '↔ ' + shortId(t.pair_tile_id).replace(/^L\d+-/, ''); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
-    card.append(im, lab, badges);
+    im.src = t.png_url; im.alt = tileName(t); im.loading = 'lazy'; im.decoding = 'async';
+    slot.appendChild(im);
+    const lab = el('div', 'tile-id mono'); lab.textContent = tileName(t);
+    if (t.pair_tile_id && t.side === 'R') { const s = el('span', '', ' · mirror'); lab.appendChild(s); }
+    const badges = el('div', 'badges');
+    if (t.side === 'axis') badges.appendChild(el('span', 'badge axis', 'on axis'));
+    if (t.composite) { const c = el('span', 'badge composite', `composite · ${t.members.length} part${t.members.length === 1 ? '' : 's'}`); c.title = 'components: ' + t.members.join(', '); badges.appendChild(c); }
+    if (t.pair_tile_id) { const p = el('span', 'badge pair', '↔ ' + (t.pair_name || shortId(t.pair_tile_id).replace(/^L\d+-/, ''))); p.title = 'mirror pair: ' + t.pair_tile_id; badges.appendChild(p); }
+    card.append(slot, lab, badges);
     card.addEventListener('click', () => showTile(t.id));
     tray.appendChild(card);
   }
@@ -498,10 +1259,125 @@ async function showTile(id) {                                   // tapping a sav
   const m = /-L(\d+)-r(\d+)$/.exec(id);
   if (!m) return;
   const level = Number(m[1]), rid = Number(m[2]);
-  if (level !== S.level) { S.selected = new Set([rid]); await loadLevel(level); return; }
+  if (S.ch !== 5) setChapter(5);
+  if (level !== S.level && rid < GROUP_ID_BASE) { S.selected = new Set([rid]); await loadLevel(level); return; }
   S.selected = new Set(S.regions.has(rid) ? [rid] : []);
   deriveTwins(); render(); updateInfo();
 }
+
+// ---------------------------------------------------------------- 06 library
+function renderPalette(box) {
+  const pal = (S.info && S.info.palette) || [];
+  box.innerHTML = `<div id="palette-in" style="display:flex;flex-wrap:wrap;gap:10px 26px;align-items:center">
+    <div class="grp" style="display:flex;align-items:center;gap:8px"><span class="lbl">Drawn</span><span class="sw">${pal.map((p) => `<span style="background:${p.from}"></span>`).join('')}</span></div>
+    <div class="grp" style="display:flex;align-items:center;gap:8px"><span class="lbl">Remapped</span><span class="sw">${pal.map((p) => `<span style="background:${p.to}"></span>`).join('')}</span></div>
+    <span class="note" style="margin:0">Keyed off each part's mean colour. A view: the stored part is untouched.</span></div>`;
+}
+const natural = (a, b) => String(a).localeCompare(String(b), 'en', { numeric: true, sensitivity: 'base' });
+function tileSrc(t) { return t.png_url + (S.libMode === 'original' ? '' : '?mode=' + S.libMode); }
+function matches(t, q) {
+  if (!q) return true;
+  const hay = [tileName(t), t.id, (t.source && t.source.stem) || '', ...(t.tags || []).map((x) => '#' + x), t.side === 'axis' ? 'on axis' : '', t.composite ? 'composite' : ''].join(' ').toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w.replace(/^#/, '')));
+}
+async function enterLibrary() {
+  try { S.sources = (await api('/api/sources')).sources || []; } catch (e) { S.sources = []; }
+  if (S.ch === 6) renderLibrary();
+}
+function renderLibrary() {                                      // from what is already loaded: a mode or a search is instant
+  const sb = $('sources'); sb.textContent = '';
+  for (const s of S.sources) {
+    const row = el('div', 'srcRow');
+    const st = s.n_tiles ? `<div class="sub">${fmt(s.n_tiles)} part${s.n_tiles === 1 ? '' : 's'} approved</div><div class="st ok">✓ in library${s.current ? ' · review open' : ''}</div>`
+      : `<div class="sub">${s.n_fragments != null ? fmt(S.regions.size || s.n_fragments) + ' parts found' : 'no parts yet'}</div><div class="st wait">waiting for your review</div>`;
+    row.innerHTML = `<div class="thumb"><img src="${esc(s.thumb_url)}" alt="" loading="lazy"></div><div><div class="big">${esc(s.stem)}</div>${st}</div>`;
+    sb.appendChild(row);
+  }
+  for (const b of $('modes').children) b.setAttribute('aria-pressed', String(b.dataset.mode === S.libMode));
+  $('palette').hidden = S.libMode !== 'remap';
+  if (S.libMode === 'remap') renderPalette($('palette'));
+  const grid = $('lib-grid'); grid.textContent = ''; grid.dataset.mode = S.libMode;
+  const tiles = [...S.library].sort((a, b) => natural((a.source && a.source.stem) || '', (b.source && b.source.stem) || '') || natural(tileName(a), tileName(b)));
+  const q = S.libQuery.trim();
+  for (const t of tiles) {
+    const card = el('button', 'lcard'); card.type = 'button'; card.dataset.id = t.id; card.title = t.id;
+    const hit = matches(t, q);
+    if (q) card.classList.add(hit ? 'hit' : 'dim');
+    const tags = t.tags || [], shownTag = (q && tags.find((x) => x.toLowerCase().includes(q.toLowerCase().replace(/^#/, '')))) || tags[0];
+    const pr = t.pair_tile_id ? `<div class="pr">↔ ${esc(t.pair_name || shortId(t.pair_tile_id))}</div>`
+      : `<div class="pr axis">${t.side === 'axis' ? 'on axis' : 'no twin saved'}</div>`;
+    card.innerHTML = `<div class="id">${esc(tileName(t))}</div>${shownTag ? `<div class="tagc">#${esc(shownTag)}${tags.length > 1 ? ' +' + (tags.length - 1) : ''}</div>` : ''}
+      <div class="pic"><img src="${esc(tileSrc(t))}" alt="${esc(tileName(t))}" loading="lazy" decoding="async"></div>
+      <div class="pv">${LOCK}<span>${esc((t.source && t.source.stem) || '?')}${t.composite ? ` · ${t.members.length} parts` : ''}</span></div>${pr}`;
+    card.addEventListener('click', () => openSheet(t.id));
+    grid.appendChild(card);
+  }
+  for (const s of S.sources) {                                   // a drawing still waiting for its review sits in the grid too
+    if (s.n_tiles || !s.current) continue;
+    const card = el('button', 'lcard pending'); card.type = 'button';
+    card.innerHTML = `<div class="id">${esc(s.stem)}</div><div class="pic"><img src="${esc(s.thumb_url)}" alt=""></div><div class="pv">${fmt(S.regions.size)} parts</div><div class="pr axis">in review</div>`;
+    card.addEventListener('click', () => setChapter(5));
+    grid.appendChild(card);
+  }
+  const empty = $('lib-empty');
+  empty.hidden = !!S.library.length;
+  empty.textContent = S.libraryAvailable ? 'No parts in the library yet. Review the drawing and save the parts you want to keep.' : 'The library is unavailable, so nothing can be stored.';
+}
+for (const b of $('modes').children) b.addEventListener('click', () => { S.libMode = b.dataset.mode; renderLibrary(); });
+$('lib-search').addEventListener('input', (e) => { S.libQuery = e.target.value; renderLibrary(); });
+
+// the sheet: one part, its locked provenance, its tags
+const sheet = $('sheet');
+function openSheet(id) {
+  const t = byId(id); if (!t) return;
+  const pair = t.pair_tile_id ? byId(t.pair_tile_id) : null, src = S.sources.find((s) => t.source && s.sha256 === t.source.sha256);
+  const map = src && t.bbox && t.working && t.working[0] ? `<div class="sheet-map" title="where it sat on the drawing"><img src="${esc(src.thumb_url)}" alt=""><i style="left:${t.bbox[0] / t.working[0] * 100}%;top:${t.bbox[1] / t.working[1] * 100}%;width:${t.bbox[2] / t.working[0] * 100}%;height:${t.bbox[3] / t.working[1] * 100}%"></i></div>` : '';
+  sheet.innerHTML = `
+    <div class="sheet-top"><input id="sheet-name" value="${esc(tileName(t))}" maxlength="24" aria-label="part name" autocomplete="off"><button class="btn" id="sheet-rename" type="button">Rename</button></div>
+    <div class="sheet-pic"><img class="t" src="${esc(tileSrc(t))}" alt="${esc(tileName(t))}">${map}</div>
+    <div class="tag-row" id="sheet-tags"></div>
+    <dl class="kv">
+      <dt>Source</dt><dd>${LOCK.replace('<svg', '<svg style="width:11px;height:11px;vertical-align:-1px"')} ${esc((t.source && t.source.filename) || '?')}</dd>
+      <dt>Mirror pair</dt><dd>${pair ? `<a href="#" id="sheet-pair">↔ ${esc(tileName(pair))}</a>${t.pair_iou != null ? ` · IoU ${Number(t.pair_iou).toFixed(2)}` : ''}` : t.side === 'axis' ? 'on axis' : 'none saved'}</dd>
+      ${t.composite ? `<dt>Composite of</dt><dd>${t.members.map((m) => esc(tileName(byId(m) || { id: m }))).join(', ')}</dd>` : ''}
+      <dt>Cut at</dt><dd>level ${t.level_index} · region ${t.region_id} · ${fmt(t.area_px)} px</dd>
+      <dt>Tile id</dt><dd>${esc(t.id)}</dd>
+      <dt>Pipeline</dt><dd>${esc(t.pipeline_version || '?')} · saved ${esc(t.created_at || '')}</dd>
+    </dl>
+    <p class="note">Everything above the name and tags is provenance: written once with the part and locked.</p>
+    <div class="sheet-actions">${t.in_session ? '<button class="btn" id="sheet-show" type="button">Show on the drawing</button>' : ''}<button class="btn ghost" id="sheet-close" type="button" autofocus>Close</button></div>`;
+  const tagBox = sheet.querySelector('#sheet-tags');
+  const drawTags = (tags) => {
+    tagBox.textContent = '';
+    for (const g of tags) {
+      const c = el('span', 'chip on'); c.append('#' + g);
+      const x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', `remove tag ${g}`);
+      x.addEventListener('click', () => changeTag(t, { remove: g }, drawTags));
+      c.appendChild(x); tagBox.appendChild(c);
+    }
+    const inp = el('input'); inp.placeholder = 'add a tag'; inp.maxLength = 32; inp.setAttribute('aria-label', 'add a tag'); inp.id = 'sheet-tag-input';
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) { e.preventDefault(); changeTag(t, { add: inp.value }, drawTags); } });
+    tagBox.appendChild(inp);
+  };
+  drawTags(t.tags || []);
+  sheet.querySelector('#sheet-close').addEventListener('click', () => sheet.close());
+  sheet.querySelector('#sheet-rename').addEventListener('click', async () => {
+    try { const j = await post(`/api/tiles/${encodeURIComponent(t.id)}/name`, { name: sheet.querySelector('#sheet-name').value }); toast(`Renamed to ${j.name}`, 'ok'); await refreshLibrary(); refreshRegions(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+  const pl = sheet.querySelector('#sheet-pair'); if (pl) pl.addEventListener('click', (e) => { e.preventDefault(); openSheet(pair.id); });
+  const sh = sheet.querySelector('#sheet-show'); if (sh) sh.addEventListener('click', () => { sheet.close(); showTile(t.id); window.scrollTo({ top: 0 }); });
+  sheet.dataset.mode = S.libMode;
+  if (!sheet.open) sheet.showModal();
+}
+async function changeTag(t, body, redraw) {
+  try { const j = await post(`/api/tiles/${encodeURIComponent(t.id)}/tags`, body); t.tags = j.tags; redraw(j.tags); if (S.ch === 6) renderLibrary(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+sheet.addEventListener('click', (e) => {                        // a tap on the backdrop closes it
+  const r = sheet.getBoundingClientRect();
+  if (e.target === sheet && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) sheet.close();
+});
 
 // ---------------------------------------------------------------- events
 // active pointer ids rather than a counter: a mouse or pen press that ends off the canvas never sends the
@@ -529,7 +1405,7 @@ stage.addEventListener('pointerdown', (e) => {
   if (down === null) stroke = null;
 });
 stage.addEventListener('pointermove', (e) => {
-  if (S.busy || !paintEl.checked || !down || e.pointerId !== down.id) return;
+  if (S.ch !== 5 || S.busy || !paintEl.checked || !down || e.pointerId !== down.id) return;
   let began = false;
   if (!stroke) {
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < PAINT_START_PX) return;
@@ -548,14 +1424,17 @@ stage.addEventListener('pointerup', (e) => {
   const d = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = Date.now() - down.t;
   down = null;
   if (wasStroke) return;                                        // the stroke selected on the way; no toggle at its end
-  if (d < 12 && dt < 700 && !S.busy) toggleRegion(regionAt(e.clientX, e.clientY));
+  if (d < 12 && dt < 700 && !S.busy && (S.ch === 4 || S.ch === 5)) {
+    const id = regionAt(e.clientX, e.clientY);
+    if (S.ch === 4 && id) setChapter(5);                        // a tap on the merge screen is the start of a review
+    toggleRegion(id);
+  }
 });
 stage.addEventListener('pointercancel', (e) => { release(e); stage.dataset.painting = ''; });
 stage.addEventListener('pointerleave', (e) => { if (!stroke) release(e); });   // a captured stroke may leave and come back
 window.addEventListener('pointerup', release);
 function applyPaintMode() { stageWrap.dataset.paint = paintEl.checked ? '1' : ''; updateInfo(); }
 paintEl.addEventListener('change', applyPaintMode);
-applyPaintMode();
 stage.addEventListener('contextmenu', (e) => e.preventDefault());
 slider.addEventListener('input', () => requestLevel(Number(slider.value), false));
 slider.addEventListener('change', () => requestLevel(Number(slider.value), true));
@@ -564,13 +1443,16 @@ btnUnmerge.addEventListener('click', doUnmerge);
 btnSave.addEventListener('click', doSave);
 btnClear.addEventListener('click', clearSelection);
 window.addEventListener('keydown', (e) => {
+  if (sheet.open) return;
   if (e.key === 'Escape') { clearSelection(); return; }
+  if (S.ch !== 4 && S.ch !== 5) return;
   if (e.target === slider || e.target.tagName === 'INPUT') return;    // the slider handles its own arrows
   if (e.key === 'ArrowLeft') { e.preventDefault(); requestLevel(S.level - 1, true); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); requestLevel(S.level + 1, true); }
 });
 let resizeTimer = 0;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 80); });
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); render(); if (S.ch === 5) updateInfo(); }, 80); });
+wide.addEventListener('change', () => { placeDock(); layout(); render(); });
 
 // ---------------------------------------------------------------- init
 function defaultLevel(levels) {
@@ -583,20 +1465,29 @@ function defaultLevel(levels) {
   return best;
 }
 async function init() {
+  placeDock();
+  applyPaintMode();
+  setOverlay(['fill', 'lines', 'off'].includes(store.get('bc.overlay', 'fill')) ? store.get('bc.overlay', 'fill') : 'fill');
   try {
     const j = await api('/api/session');
-    S.meta = j.meta; S.levels = j.meta.levels || []; S.libraryAvailable = !!j.library;
+    S.info = j; S.meta = j.meta; S.levels = j.meta.levels || []; S.libraryAvailable = !!j.library;
     $('hdr-file').textContent = (j.meta.source && j.meta.source.filename) || '?';
     $('hdr-axis').textContent = j.meta.axis ? Math.round(j.meta.axis.x) : '–';
     $('hdr-session').textContent = j.meta.session_id || '–';
+    document.title = `Biomorphic Composer · ${(j.meta.source && j.meta.source.filename) || ''}`;
     slider.max = String(Math.max(0, S.levels.length - 1)); levelMax.textContent = Math.max(0, S.levels.length - 1);
+    // which stage to open on: the link's, else where this drawing was left, else the first
+    const fromHash = CH.findIndex((c) => '#' + c.id === location.hash) + 1;
+    const start = fromHash || Number(store.get('bc.ch.' + j.meta.session_id, '1')) || 1;
+    setChapter(start, { silent: true });
     S.img = await loadImage('/api/working.png');
     S.W = S.img.naturalWidth; S.H = S.img.naturalHeight;
+    layout(); fillCapture(); fillSplit(); fillTicks();
     render();
     // open near the brief's target granularity (50-75 parts) rather than at the finest level
-    const start = defaultLevel(S.levels);
-    slider.value = String(start);
-    await Promise.all([loadLevel(start), refreshLibrary()]);
+    const lv = defaultLevel(S.levels);
+    setSlider(lv);
+    await Promise.all([loadLevel(lv), refreshLibrary()]);
   } catch (e) {
     stageMsg.textContent = 'could not load the session';
     toast('Could not load the session: ' + e.message, 'err');
