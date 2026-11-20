@@ -203,38 +203,60 @@ Read from the 99 decoded images; it confirms the pipeline above and fixes a few 
 
 **What it says about behaviour:** parts are indexed around the axis (twin for most slots, one axial piece per band, stacked `s` pieces along the axis), which is what lets the composer snap and mirror placements along a spine. Transforms in the reel are applied at render time, never baked into tiles. All confirmed tiles come from drawing 1; drawing 2 contributes only its fragment and level overlays, consistent with its "waiting for your review" status.
 
-## 12. Comparison checklist (fill in against the codebase)
+## 12. Comparison against the codebase
 
-| # | Reel behavior | Codebase today | Verdict (keep / adopt / adapt) |
-|---|---------------|----------------|--------------------------------|
-| 1.1 | Auto-find figure box on the page, crop with margin | | |
-| 1.2 | 720 px working copy; original untouched | | |
-| 1.3 | Paper mask (keep only the figure) | | |
-| 1.4 | Step checklist with concrete numbers | | |
-| 2.1 | Vertical axis search by mirror correlation, peak wins | | |
-| 2.2 | Live r readout + curve chart + fold preview | | |
-| 3.1 | Watershed from open-area seeds, ink as walls, deliberate over-split | | |
-| 3.2 | Live fragment counter / seed visualisation | | |
-| 4.1 | Merge tree over ink-free shared edges | | |
-| 4.2 | Resolution slider = cut height; count at cut; overlay updates live | | |
-| 4.3 | Dendrogram with moving cut line | | |
-| 5.1 | Tap part → mirror twin auto-selected, IoU shown | | |
-| 5.2 | User confirms grouping; "Save pair to tray" | | |
-| 5.3 | Tray assigns IDs (`C3`, `C5 · mirror`) and shows cut-outs | | |
-| 6.1 | Sources list with per-source status (splitting / in review / in library) | | |
-| 6.2 | Library cards: ID, locked source, ↔ pair or "on axis", tags | | |
-| 6.3 | Render modes Original / Greyscale / Outline / Recolor as views (ink layer + recolour share the tile's alpha) | | |
-| 6.4 | Search by id/tag with dim-and-highlight | | |
-| 6.5 | Band-letter + symmetric-number + L/R/s naming scheme | | |
-| 6.6 | Tiles fly from map position to grid (shows provenance) | | |
-| 7.1 | Shelf → canvas drag with mirror-on auto twin | | |
-| 7.2 | Lock anchors; anchor list with roles (outer frame / head / spine) | | |
-| 7.3 | Generate: socket-based fill, entropy order, mirrored units | | |
-| 7.4 | Placement graph lines + ring pulse + progress N / 26 + queue chips | | |
-| 8.1 | Palette remap keyed off mean Lab colour, view-only | | |
-| 8.2 | Export layered PSD for Procreate, one layer per part, progress | | |
-| 8.3 | Exploded 3D layer preview | | |
-| P1–P6 | Cross-cutting principles above | | |
+Filled in against pipeline 0.2.0 and the stage-by-stage page (`biomorphic/server/static/index.html`). **In the app** says
+what exists; **Verdict** is one of: *matches* (same behaviour), *kept different* (the app does it another way on purpose,
+with the reason), *added* (built in the change that restyled the page after the reel), *partly*, *not built*.
+
+| # | Reel behavior | In the app | Verdict |
+|---|---------------|------------|---------|
+| 1.1 | Auto-find figure box on the page, crop with margin | The figure is the largest connected patch of dark-or-coloured pixels; cropped with a 70 px margin. Shown on the Capture card with its pixel sizes. | matches |
+| 1.2 | 720 px working copy; original untouched | The working copy is up to 1800 px wide (the sample stays at full size, 1627 px). The original file is only read. | kept different: thin ink lines survive, and tiles are cut at this resolution, so a 720 px copy would cap tile quality |
+| 1.3 | Paper mask (keep only the figure) | A figure mask; every level's tiles cover exactly it. Capture veils the paper to show it. | matches |
+| 1.4 | Step checklist with concrete numbers | The Capture card: four steps that tick in, each with the session's real numbers, and crop marks on the figure box. | added (the reel's scan-line sweep is not: ingest has finished before the page opens) |
+| 2.1 | Vertical axis search by mirror correlation, peak wins | Every vertical line is scored by the overlap (IoU) of the figure with its mirror image, tilts of ±3° are tried too, and the peak wins. A fold then fits the mirrored half onto the other (tilt, stretch, a gentle bend). | kept different: IoU of the silhouette is steadier than pixel correlation on a phone photo, and the fold is what makes twins of hand-drawn halves findable (ink overlap 55% → 84% on the sample) |
+| 2.2 | Live r readout + curve chart + fold preview | The Mirror axis card: the real search curve with the peak marked, Axis and Mirror match readouts, a candidate line that sweeps the drawing as the curve draws, and "fold to compare" turning the left half over onto the right. The fitted centre line is drawn solid, the straight axis dashed. | added |
+| 3.1 | Watershed from open-area seeds, ink as walls, deliberate over-split | The same: every ink-free cell is a seed and floods to the ink's centre line (213 fragments on the sample; the reel's 376 is illustrative). Faint lines are recovered from the mirrored half. | matches |
+| 3.2 | Live fragment counter / seed visualisation | The Split screen: the counter runs up, the fragment map floods out from the axis, seeds are drawn, and the ink mask ("walls") can be switched on. | added |
+| 4.1 | Merge tree over ink-free shared edges | A full merge tree built up front; cost is dominated by how much ink sits on the shared border. Mirror twins merge together, so every level stays symmetric. | matches (and stricter about symmetry) |
+| 4.2 | Resolution slider = cut height; count at cut; overlay updates live | One slider over 24 real levels of the tree (213 … 5 parts), big count, tick stops, and the drawing recoloured per part at every stop. | matches; kept 24 levels instead of the reel's 4 stops |
+| 4.3 | Dendrogram with moving cut line | The real tree (one branch per merge, 213 leaves), cut line following the slider, branches under the cut coloured like their part on the drawing. | added (the reel's diagram is schematic; this one is the data) |
+| 5.1 | Tap part → mirror twin auto-selected, IoU shown | Tap selects (cyan), the twin follows (orange), dashed link, a `mirror twin · IoU` tag on the axis, and the Review card lists both with their areas. | matches |
+| 5.2 | User confirms grouping; "Save pair to tray" | Nothing is stored until Save; the button reads Save pair / part / N parts to tray; the selection ends once saved. Also there, beyond the reel: paint a stroke to select several parts, Merge them into a composite (with its mirror composite), Unmerge. | matches; the extras are kept because the tree alone does not always give the artist's parts |
+| 5.3 | Tray assigns IDs (`C3`, `C5 · mirror`) and shows cut-outs | Saving names the tiles (`C3` ↔ `C5`), the cut-outs fly from the drawing into the tray, the right-hand twin is labelled `· mirror`. | added |
+| 6.1 | Sources list with per-source status (splitting / in review / in library) | The Sources card lists every drawing with tiles in the library plus the one under review: `N parts approved · ✓ in library` or `N parts found · waiting for your review`. | partly: there is no "splitting…" state (ingest is a separate command), and the server reviews one drawing at a time |
+| 6.2 | Library cards: ID, locked source, ↔ pair or "on axis", tags | The Library grid: name, lock + source, `↔` pair or `on axis`, tag chip. A part sheet shows the full locked provenance and where the part sat on the drawing. | added (the data was already stored) |
+| 6.3 | Render modes Original / Greyscale / Outline / Recolor as views | The four-way control; all three are computed from the stored tile on request and nothing is written. | matches, with one visible difference: Recolor shifts a whole part by the palette step nearest its *mean* colour (as the brief specifies), so a part with blue and mint areas turns one tint, where the reel remaps each colour area |
+| 6.4 | Search by id/tag with dim-and-highlight | Search over name, tag and source; misses dim to 30%, hits get the accent border and show the matching tag. Tags are typed in the part sheet. | added |
+| 6.5 | Band-letter + symmetric-number + L/R/s naming scheme | Letter = which fifth of the drawing's height (A top … E bottom), number = 1…7 around 4 on the axis, twins mirrored (3 ↔ 5). A taken name gets `b`, `c`, … (a pair shares its suffix). Names can be changed; the tile id stays the key. | added, adapted: the reel's bands are hand-drawn rows of unequal height and its `L`/`R`/`s` suffixes carry meaning a rule cannot know, so those are left to renaming |
+| 6.6 | Tiles fly from map position to grid (shows provenance) | Not animated. The part sheet's locator and "Show on the drawing" answer the same question. | not built |
+| 7.1 | Shelf → canvas drag with mirror-on auto twin | — | not built (out of scope for V1 by the brief) |
+| 7.2 | Lock anchors; anchor list with roles | — | not built |
+| 7.3 | Generate: socket-based fill, entropy order, mirrored units | — | not built; "what is a socket" is still an open question (§13) |
+| 7.4 | Placement graph lines + ring pulse + progress + queue chips | — | not built |
+| 8.1 | Palette remap keyed off mean Lab colour, view-only | Works as a view (Library → Recolor) with one built-in cool → warm palette. No palette editor. | partly |
+| 8.2 | Export layered PSD for Procreate, one layer per part | — | not built (needs a composition to export) |
+| 8.3 | Exploded 3D layer preview | — | not built |
+| P1 | Non-destructive everywhere | Holds: tiles are stored once; render modes never write (verify check 7). | matches |
+| P2 | Human decides, machine proposes | Holds: twins are proposed, nothing is saved or merged without a tap on the button. | matches |
+| P3 | Provenance is locked | Holds: a database trigger refuses any change (verify check 8). Now also visible: the lock and source on every card. | matches |
+| P4 | Mirror symmetry is first-class | Holds: fold-based twins, mirror-consistent merge levels, mirrored names, twins share a colour in the overlays. | matches |
+| P5 | Every term gets a plain-language gloss | Each stage shows its gloss under the cards. | added |
+| P6 | Progress is always visible and countable | Counts on every stage (fragments, parts at this cut, tiles in the tray and library). The composer's counters do not exist yet. | partly |
+
+The stages 07 Compose and 08 Recolor and export are on the page's rail with a lock: they open a card that says what the
+reel shows and what is not built, so the flow reads end to end without pretending.
+
+### Where the app differs from the reel on purpose
+
+- **A phone layout.** Under 980 px the page is one column and the slider and buttons sit in a bar pinned to the bottom,
+  so the drawing stays in view while the slider moves. The reel is a fixed 1200 × 840 stage.
+- **An overlay switch** (regions / lines / photo) on the merge and review stages, because coloured fills hide the
+  drawing's own colours, which is what the artist judges a grouping by.
+- **Composites.** Paint-to-select, Merge, mirror merges and Unmerge are not in the reel. They are how the artist reaches
+  parts the merge tree does not offer at any single cut.
+- **Real numbers and real diagrams** everywhere the reel says "illustrative" or "schematic".
 
 ## 13. Things the reel leaves open (decide with the user)
 

@@ -2,7 +2,7 @@
 
 Photo of a bilaterally symmetric biomorphic drawing in → a reviewed, mirror-paired, provenance-tagged library of reusable parts ("tiles") out.
 
-V1 covers capture → split → merge → review → library. The composition engine, Procreate export and tagging UI are later versions; `docs/REEL_BEHAVIOR_SPEC.md` describes the long-term flow and `docs/V1_BRIEF.md` what V1 commits to. `docs/ARCHITECTURE.md` is the contract every module follows.
+V1 covers capture → split → merge → review → library. The composition engine and Procreate export are later versions; `docs/REEL_BEHAVIOR_SPEC.md` describes the long-term flow and `docs/V1_BRIEF.md` what V1 commits to. `docs/ARCHITECTURE.md` is the contract every module follows.
 
 ## How it works
 
@@ -47,17 +47,25 @@ If Playwright cannot find a browser, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE` at a
 
 Debug helpers: `biomorphic sheet <session>` writes a contact sheet of a session; `biomorphic pairs <session> --level N` prints sides and twins; `biomorphic ingest --param KEY=VALUE` overrides any pipeline parameter (they are all listed in `session.json`).
 
-## Review page
+## The page
 
-One slider sets the granularity (it opens near 60 parts). Tap a part to select it; its twin is selected with it (cyan and orange). With **paint** on (the default) a drag across several parts selects them all in one stroke; tap a part to add or remove it. **Merge** joins the selected parts into one composite, and with *mirror merges* on, makes its mirror composite too (the parts under the composite folded across the axis). A composite is pinned: it stays exactly the parts you grouped at every slider position. **Save** writes every selected part to the library as a tile, a composite together with its component tiles, and links the pair. The tray shows what is saved; tapping a tray card jumps back to that part.
+The page follows the reel stage by stage (`docs/REEL_BEHAVIOR_SPEC.md` has the reel's behaviour and, in section 12, a row-by-row comparison with the app). Think of it as a factory tour: the first three stops show what the machine already did to your photo, the next three are where you work, and the last two are rooms that are not built yet.
+
+1. **Capture**, 2. **Mirror axis**, 3. **Split**: what the pipeline found, with its real numbers: the crop, the axis search curve and a fold-to-compare, the fragment map.
+4. **Merge**: one slider sets the granularity (it opens near 60 parts), with the merge tree and its cut line beside it.
+5. **Review**: tap a part to select it; its twin is selected with it (cyan and orange). With **paint** on (the default) a drag across several parts selects them all in one stroke; tap a part to add or remove it. **Merge** joins the selected parts into one composite and, with *mirror merges* on, makes its mirror composite too (the parts under the composite folded across the axis). A composite is pinned: it stays exactly the parts you grouped at every slider position. **Save … to tray** writes every selected part to the library as a tile, a composite together with its component tiles, links the pair and names the tiles (`C3 ↔ C5`: a letter for how far down the drawing, a number for how far across, 4 on the axis). Tapping a tray card jumps back to that part.
+6. **Library**: every stored part with its locked source, pair and tags; Original / Greyscale / Outline / Recolor as views; search; a sheet per part to rename it and tag it.
+7. **Compose** and 8. **Recolor and export** are marked with a lock: later versions.
+
+On a phone the page is one column with the slider and buttons pinned to the bottom. Open a stage directly with `http://<host>:8765/#review` (or `#library`, `#merge`, …).
 
 ## Layout
 
 ```
 biomorphic/pipeline   ingest, ink, axis, oversegment, merge, pairing, run, debug
 biomorphic/session.py shared core: merge tree cuts, level label maps, manual groups, region stats
-biomorphic/library    SQLite library (db.py) and render modes (render.py)
-biomorphic/server     stdlib HTTP server (app.py) and the single-file review page (static/index.html)
+biomorphic/library    SQLite library (db.py), part names (naming.py) and render modes (render.py)
+biomorphic/server     stdlib HTTP server (app.py), the single-file page (static/index.html) and its fonts
 biomorphic/verify     the eight checks, ground-truth matching, contact sheet, UI drive, report
 samples/              the sample photo, the hand-made segmentation map and its curated labels
 docs/                 architecture contract, V1 brief, reel-derived behaviour spec

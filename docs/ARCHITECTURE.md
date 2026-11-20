@@ -11,7 +11,7 @@ Photo of a drawing in → reviewed, mirror-paired, provenance-tagged tile librar
 3. The **library** on disk: one RGBA PNG per tile (original colour + alpha) and metadata in SQLite.
 4. `biomorphic verify` runs the pipeline on the sample and writes a report, a contact sheet and UI screenshots.
 
-Out of scope: composition engine, Procreate export, SAM, deformation, tagging UI.
+Out of scope: composition engine, Procreate export, SAM, deformation. (Tags are typed in the library's part sheet; there is no bulk tagging UI.)
 
 ## Non-negotiables (from the brief)
 
@@ -43,10 +43,12 @@ biomorphic/
     debug.py            optional debug images for development
   library/
     db.py               SQLite schema, Library API, provenance immutability (trigger + no API path)
+    naming.py           default display names: band letter + column number (C3 <-> C5), pure functions
     render.py           view-time render modes: original, greyscale, outline, remap (keyed off mean Lab)
   server/
     app.py              stdlib ThreadingHTTPServer, JSON API, serves static/
-    static/index.html   the review UI (vanilla JS + canvas, no build step, touch-first)
+    static/index.html   the page: the reel's eight stages (vanilla JS + canvas, no build step, touch-first)
+    static/*.woff2      the reel's typefaces, Syne and Recursive (latin subsets, OFL; notice in FONTS-LICENSE.txt)
   verify/
     run.py              run_verify(photo, map_png, out_dir, ...) -> report
     checks.py           automated checks 1–8
@@ -181,7 +183,8 @@ CREATE TABLE sources   (sha256 TEXT PRIMARY KEY, filename TEXT, width INT, heigh
 CREATE TABLE tiles     (id TEXT PRIMARY KEY, created_at TEXT, png_path TEXT, png_sha256 TEXT,
                         width INT, height INT, area_px INT, side TEXT,            -- 'L' | 'R' | 'axis'
                         pair_tile_id TEXT, pair_iou REAL,
-                        mean_L REAL, mean_a REAL, mean_b REAL);
+                        mean_L REAL, mean_a REAL, mean_b REAL,
+                        name TEXT);                        -- display name, unique within a source, artist-editable
 CREATE TABLE provenance(tile_id TEXT PRIMARY KEY REFERENCES tiles(id) ON DELETE CASCADE,
                         source_sha256 TEXT, source_filename TEXT, session_id TEXT, pipeline_version TEXT,
                         axis_x REAL, axis_angle_deg REAL, level_index INT, n_merges INT, region_id INT,
@@ -198,7 +201,9 @@ CREATE TABLE tile_members(composite_id TEXT REFERENCES tiles(id) ON DELETE CASCA
 CREATE TRIGGER provenance_immutable BEFORE UPDATE ON provenance BEGIN SELECT RAISE(ABORT, 'provenance is immutable'); END;
 ```
 
-`Library` API (`db.py`): `open(dir)`, `save_tile(session, level, region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (writes PNG, sources + tiles + provenance rows, in one transaction; raises `TileExists` rather than overwrite a stored tile), `save_pair(session, level, a, b, *, iou=None) -> (TileRecord, TileRecord)` (both tiles plus the link, one transaction), `link_pair(a, b, iou)` (the only UPDATE the API issues, on `tiles`), `save_composite(session, level, group_region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (a manual group's region as a tile **plus** its components: the level-0 regions inside it, cut with groups ignored, each stored as an ordinary tile unless already there, and recorded in `tile_members`; one transaction), `members(tile_id) -> [TileRecord]`, `composites_of(tile_id) -> [ids]` (`TileRecord.members` / `.is_composite` carry the same), `get(tile_id)`, `list_tiles(source_sha256=None)`, `tile_path(id)`, `tile_png_bytes(id)`, `add_tag/remove_tag/tags(id)`, `delete_tile(id)` (rows cascade, PNG removed, partner unlinked), `summary() -> {n_tiles, n_sources, dir}`, `provenance_is_immutable() -> bool` (probes an UPDATE inside a rolled-back savepoint; verify check 8). There is deliberately **no** method that updates provenance; the trigger enforces it at the database too.
+`Library` API (`db.py`): `open(dir)`, `save_tile(session, level, region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (writes PNG, sources + tiles + provenance rows, in one transaction; raises `TileExists` rather than overwrite a stored tile), `save_pair(session, level, a, b, *, iou=None) -> (TileRecord, TileRecord)` (both tiles plus the link, one transaction), `link_pair(a, b, iou)` (the only UPDATE the API issues, on `tiles`), `save_composite(session, level, group_region_id, *, pair_with=None, pair_iou=None) -> TileRecord` (a manual group's region as a tile **plus** its components: the level-0 regions inside it, cut with groups ignored, each stored as an ordinary tile unless already there, and recorded in `tile_members`; one transaction), `members(tile_id) -> [TileRecord]`, `composites_of(tile_id) -> [ids]` (`TileRecord.members` / `.is_composite` carry the same), `get(tile_id)`, `list_tiles(source_sha256=None)`, `tile_path(id)`, `tile_png_bytes(id)`, `add_tag/remove_tag/tags(id)`, `delete_tile(id)` (rows cascade, PNG removed, partner unlinked), `summary() -> {n_tiles, n_sources, dir}`, `provenance_is_immutable() -> bool` (probes an UPDATE inside a rolled-back savepoint; verify check 8), `rename(tile_id, name) -> TileRecord`, `all_tags() -> {tile_id: [tag]}`, `sources() -> [{sha256, filename, width, height, first_seen_at, n_tiles}]`. There is deliberately **no** method that updates provenance; the trigger enforces it at the database too.
+
+**Display names** (`naming.py`). Every tile gets a short name when it is stored, the reel's part ids: a letter for the fifth of the working copy's height its bounding box is centred in (A top … E bottom) and a number for where it sits across the drawing (4 on the axis, 3 / 2 / 1 stepping out to the viewer's left, 5 / 6 / 7 to the right), so twins read `C3 ↔ C5`. `save_pair` names the two from the pair as a whole (one band, mirrored numbers); a tile saved with `pair_with` takes the mirrored name of its partner when that is free; a taken name gets a suffix `b`, `c`, … (shared by a pair). Names are unique within a source drawing, are **not** provenance (`TileRecord.name`, column `tiles.name`), and `rename` changes one (1–24 letters, digits, space, `_ . + -`). The rule only reads what provenance stores, so a library written before names existed is named on `open`. The tile id remains the key everywhere.
 
 `render.py`: `render(rgba, mode, palette=None) -> rgba` with modes `original | greyscale | outline | remap`; `mean_lab(rgba)`. `outline` keeps only ink-like pixels (dark and colourless) as black with the tile's alpha. `remap` takes a palette `[{"from": [L,a,b], "to": [L,a,b]}, ...]`, picks the entry nearest the tile's mean Lab and shifts every pixel by that delta. Pure functions; nothing here writes to disk.
 
@@ -208,38 +213,77 @@ CREATE TRIGGER provenance_immutable BEFORE UPDATE ON provenance BEGIN SELECT RAI
 
 ```
 GET  /                                 index.html
+GET  /static/<name>                    the page's fonts (woff2) and their licence notice
 GET  /api/session                      {"meta": session.json, "groups": [...], "library": Library.summary() + "tile_count"
-                                        (null when the library is unavailable), "library_dir": ..., "n_leaves": N}
+                                        (null when the library is unavailable), "library_dir": ..., "n_leaves": N,
+                                        "figure_box": [x, y, w, h], "figure_area": px, "axis_curve": [[y, x], ...] (the
+                                        fitted centre line; straight without a fold), "has_fold": bool,
+                                        "palette": [{"from": "#rrggbb", "to": "#rrggbb"}] (the built-in remap, as swatches)}
 GET  /api/working.png
+GET  /api/figure.png                   RGBA veil over everything that is not the figure (Capture: "mask out the paper")
+GET  /api/ink.png                      RGBA overlay of the ink mask (Split: "walls")
+GET  /api/axis/curve                   {"points": [[x, score], ...], "x_min", "x_max", "axis_x", "score", "measure"}: the
+                                        axis search as a curve, recomputed from the figure mask (axis.iou_profile)
+GET  /api/tree                         merge_tree.json: {"n_leaves", "merges": [[a, b, cost, new_id], ...]}
 GET  /api/levels/<i>/labels.png        RGB PNG, region id = R | G<<8 | B<<16 (0 = background), groups applied
-GET  /api/levels/<i>/overlay.png       RGBA PNG: 2-px region boundaries (ink colour) for drawing over the photo
-GET  /api/levels/<i>/regions           {"<id>": {"area","bbox","centroid","side","twin","iou","saved_tile_id","group_index"}}
-                                        twin/iou null when unpaired, saved_tile_id null unless that region is in the library,
-                                        group_index null unless the region is a manual group
+GET  /api/levels/<i>/overlay.png       RGBA PNG: 2-px region boundaries (magenta); the page now draws its own overlays
+                                        from labels.png, this stays for tools
+GET  /api/levels/<i>/regions           {"<id>": {"area","bbox","centroid","side","twin","iou","saved_tile_id","saved_name",
+                                        "group_index"}} twin/iou null when unpaired, saved_* null unless that region is
+                                        in the library, group_index null unless the region is a manual group
 POST /api/merge     {"level": i, "region_ids": [...], "mirror": true}   -> {"groups": [...], "created": [group_ids]}
                                         mirror: the composite's mirror is found on the fold as a whole (Session.mirror_leaves),
                                         so it exists whether or not each tapped part had a twin; none when it straddles the axis
 POST /api/unmerge   {"group_index": k}
-POST /api/save      {"level": i, "region_ids": [...]}                   -> {"tiles": [{"id","png_url","side","pair_tile_id","members","composite"}]}
+POST /api/save      {"level": i, "region_ids": [...]}                   -> {"tiles": [tile, ...]}
                                         a group region is saved as a composite at level 0 whatever the slider shows (it is the same
                                         region at every level) together with its component tiles; `saved_tile_id` reports it at every level
-GET  /api/library                      {"tiles": [...]}
+GET  /api/library                      {"tiles": [tile, ...]}
+GET  /api/sources                      {"sources": [{"sha256","filename","stem","n_tiles","current","status": "in_library" |
+                                        "waiting","n_fragments","thumb_url"}]}: every drawing with tiles in the library plus
+                                        the one under review
+GET  /api/sources/<sha>/thumb.png      240 px tall: the working copy for the session's drawing, else that drawing's stored
+                                        tiles put back where they were cut (the library keeps tiles, not photos)
 GET  /api/tiles/<id>.png?mode=original|greyscale|outline|remap
+POST /api/tiles/<id>/tags   {"add": "wing"} | {"remove": "wing"}        -> {"id", "tags": [...]}
+POST /api/tiles/<id>/name   {"name": "C3"}                              -> tile
 ```
 
-UI behaviour: one slider = level index (shows the region count); tap a region to toggle it in the selection, its mirror twin co-selects (selected = cyan, twin = orange, axis-regions have no twin); **paint** (toggle, on by default): a one-finger drag selects every part under the stroke (sampled between pointer events), a press that stays put is still a tap, so an overshoot is removed by tapping it; with paint off a drag scrolls / pinches as the browser likes; **Merge** unions the selected regions into one composite and, when "mirror merges" is on, its mirror composite (the parts under the composite folded across the axis) into a second group; **Save** writes every selected region (twins included) to the library, a composite with its component tiles, and links pairs; a tray shows saved tiles (a `composite · n parts` badge on composites). Phone width first (375 px), large hit targets, no build step, no external assets.
+A `tile` is `{"id","name","png_url","side","pair_tile_id","pair_iou","pair_name" (library listing only),"area_px","width",
+"height","created_at","members","composite","tags","source": {"sha256","filename","stem"},"session_id","level_index",
+"region_id","pipeline_version","bbox": [x, y, w, h],"working": [w, h],"in_session"}`: the artist's fields (name, tags)
+and a read-only copy of the provenance the page shows.
 
-Details as implemented: tapping an orange twin deselects the pair; the selection survives a level change for region ids that still exist; after Merge the new group is selected (its mirror group follows as the twin); **Unmerge** appears when a selected region or twin is a manual group and removes those groups; Save returns tiles that already exist instead of failing and links a lone twin to its partner's existing tile; every error is JSON `{"error": ...}` with a status (400 bad request, 404 unknown level/region/tile, 405 wrong method, 503 library unavailable, 501 render not implemented). Level PNGs are cached per (level, groups) and sent `Cache-Control: no-store`.
+### The page: eight stages
+
+The page follows the reel (`docs/REEL_BEHAVIOR_SPEC.md`): a rail of eight stages, the drawing as a print on the left and
+one card per stage on the right, a caption and a one-line gloss per stage. It opens on the stage in the URL fragment
+(`#capture #axis #split #merge #review #library #compose #export`), else where this session was left (localStorage),
+else on Capture. Under 980 px it is one column and the slider and buttons move into a bar pinned to the bottom
+(`#dock`); the same elements are moved, never duplicated.
+
+1. **Capture**: source file and size, four checklist steps with the session's numbers, crop marks on the figure box, the paper veiled.
+2. **Mirror axis**: the search curve with its peak, Axis and Mirror match readouts, the fitted centre line (solid) and the straight axis (dashed), "fold to compare".
+3. **Split**: the fragment count, the level-0 map flooding out from the axis, seeds, optional ink mask.
+4. **Merge**: big count, the slider over level indices with tick stops, parts filled with one colour each (twins share it), and the real merge tree with a cut line that follows the slider. A tap on a part opens Review with it selected.
+5. **Review**: tap a region to toggle it in the selection, its mirror twin co-selects (selected = cyan, twin = orange, axis-regions have no twin), a tag on the axis shows the pair's IoU; **paint** (toggle, on by default): a one-finger drag selects every part under the stroke (sampled between pointer events), a press that stays put is still a tap, so an overshoot is removed by tapping it; with paint off a drag scrolls / pinches as the browser likes; **Merge** unions the selected regions into one composite and, when "mirror merges" is on, its mirror composite (the parts under the composite folded across the axis) into a second group; **Save … to tray** writes every selected region (twins included) to the library, a composite with its component tiles, links pairs, names the tiles, clears the selection and flies the cut-outs into the tray. The tray shows this drawing's saved tiles by name (`· mirror` on the right-hand twin, a `composite · n parts` badge on composites).
+6. **Library**: a Sources card, a four-way render-mode control (views only), search that dims misses and marks hits, a grid of cards (name, lock + source, `↔` pair or `on axis`, tag chip) and a part sheet (rename, tags, locked provenance, where the part sat, "Show on the drawing").
+7. **Compose** and 8. **Recolor and export** are on the rail with a lock and open a card that says what is not built.
+
+Details as implemented: tapping an orange twin deselects the pair; the selection survives a level change for region ids that still exist; after Merge the new group is selected (its mirror group follows as the twin); **Unmerge** appears when a selected region or twin is a manual group and removes those groups; Save returns tiles that already exist instead of failing and links a lone twin to its partner's existing tile; an overlay switch (regions / lines / photo) on Merge and Review is remembered; every error is JSON `{"error": ...}` with a status (400 bad request, 404 unknown level/region/tile/source, 405 wrong method, 503 library unavailable, 501 render not implemented). Level PNGs are cached per (level, groups) and sent `Cache-Control: no-store`. No build step and no network: fonts come from `/static`.
 
 ### UI test hooks
 
-Stable ids and attributes for Playwright (`tests/test_ui_playwright.py`, `verify/ui_drive.py`); `biomorphic/server/browser.py: launch_chromium(playwright, **kw)` launches Chromium here (default launch, then `$PLAYWRIGHT_CHROMIUM_EXECUTABLE`, then `/opt/pw-browsers/chromium`).
+Stable ids and attributes for Playwright (`tests/test_ui_playwright.py`, `verify/ui_drive.py`); `biomorphic/server/browser.py: launch_chromium(playwright, **kw)` launches Chromium here (default launch, then `$PLAYWRIGHT_CHROMIUM_EXECUTABLE`, then `/opt/pw-browsers/chromium`). Tests that drive the review open `<url>#review`.
 
-- `#stage` — the visible canvas; it shows the whole working image scaled to the width, so image px map to page px through its bounding box. Attributes: `data-selected` / `data-twins` (comma-separated region ids: tapped regions / their co-selected mirror twins), `data-level` (the level on screen; empty while one loads), `data-ready="1"` once the first level is drawn, `data-busy="1"` during a request.
-- `#slider` — range input over level indices. `ArrowLeft`/`ArrowRight` move it (focused or not), `Escape` clears the selection. `#count` is the region count at the shown level as a bare number (`data-approx="1"` while a level is still loading); `#cost`, `#level-idx`, `#level-max`.
-- `#btn-merge` (disabled unless ≥ 2 tapped regions), `#mirror-merges` (checkbox, checked by default), `#paint-mode` (checkbox, checked by default; `#stage-wrap[data-paint="1"]` while on, `#stage[data-painting="1"]` during a stroke), `#btn-unmerge` (hidden unless applicable), `#btn-save` (disabled when nothing is selected), `#btn-clear`.
-- `#tray` — one `.tile[data-id="<tile id>"]` child per saved tile, newest first, with an `img` from `/api/tiles/<id>.png`, a `.badge.pair` when linked and a `.badge.composite` on a composite; the empty-state text sits outside `#tray`, so `#tray.children.length` is the tile count. `#tray-count`, `#hdr-lib` (tile count, or "library unavailable"), `#hdr-file`, `#hdr-axis`, `#hdr-session`.
-- `#toast` — status messages, shown with `data-show="1"` (hidden through `visibility: hidden`); after Save it reads `Saved N tile(s) to the library`. `#info` is the mono readout under the stage (part ids, area, IoU, "saved").
+- `body[data-ch="1".."8"]` — the stage on screen. `#rail .chap[data-ch]` — the stage buttons (`aria-current="step"` on the open one). `#cap-n`, `#cap-t`, `#cap-l` — the caption. `#next` — the "Next · …" button (stages 1–5). Elements carry `data-chs="<stages>"` and are `hidden` elsewhere.
+- `#stage` — the visible canvas (stages 1–5); it shows the whole working image scaled to the width, so image px map to page px through its bounding box. Attributes: `data-selected` / `data-twins` (comma-separated region ids: tapped regions / their co-selected mirror twins), `data-level` (the level on screen; empty while one loads), `data-ready="1"` once the first level is drawn, `data-busy="1"` during a request. `#axis-tag` (stage 2) and `#mirror-tag` (stage 5) are the labels drawn over it.
+- Stage cards: `#cap-file`, `#cap-size`, `#cap-steps .step` (`.on` once ticked); `#axis-chart`, `#ax-x`, `#ax-r`, `#btn-fold`; `#frag-count`, `#split-kv`, `#btn-seeds`, `#btn-ink`, `#btn-replay`; `#dendro` (one `path` per merge, the dashed `line` is the cut), `#ticks`; `#overlay-modes [data-ov]`.
+- `#slider` — range input over level indices (stages 4–5). `ArrowLeft`/`ArrowRight` move it on those stages (focused or not), `Escape` clears the selection. `#count` is the region count at the shown level as a bare number (`data-approx="1"` while a level is still loading); `#cost`, `#level-idx`, `#level-max`.
+- `#btn-save` (disabled when nothing is selected; its text says what will be saved), `#btn-merge` (disabled unless ≥ 2 tapped regions), `#mirror-merges` (checkbox, checked by default), `#paint-mode` (checkbox, checked by default; `#stage-wrap[data-paint="1"]` while on, `#stage[data-painting="1"]` during a stroke), `#btn-unmerge` (hidden unless applicable), `#btn-clear`.
+- `#tray` — one `.tile[data-id="<tile id>"]` child per saved tile of this drawing, newest first, with an `img` from `/api/tiles/<id>.png`, a `.tile-id` (the name), a `.badge.pair` when linked and a `.badge.composite` on a composite; the empty-state text sits outside `#tray`, so `#tray.children.length` is the tile count. `#tray-count`, `#hdr-lib` (tile count, or "library unavailable"), `#hdr-file`, `#hdr-axis`, `#hdr-session`.
+- Library: `#sources .srcRow`, `#modes [data-mode]` (`aria-pressed`), `#lib-search`, `#palette` (visible in Recolor), `#lib-grid .lcard[data-id]` (`.hit` / `.dim` under a search; `.id`, `.pv`, `.pr`, `.tagc` inside), `#sheet` (a `dialog`: `#sheet-name`, `#sheet-rename`, `#sheet-tag-input`, `#sheet-tags`, `#sheet-close`).
+- `#toast` — status messages, shown with `data-show="1"` (hidden through `visibility: hidden`); after Save it reads `Saved N tile(s) to the library`. `#info` is the selection readout on the Review card (part ids, area, "mirror twin, auto-selected", IoU, "saved as <name>").
 
 ## Verify (`biomorphic/verify`)
 
