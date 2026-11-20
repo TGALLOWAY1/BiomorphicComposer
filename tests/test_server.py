@@ -321,3 +321,86 @@ def test_save_twin_composites_together_stores_both_with_components(server):
     assert a["composite"] and b["composite"] and len(a["members"]) == 2 and len(b["members"]) == 2
     assert a["pair_tile_id"] == b["id"] and b["pair_tile_id"] == a["id"]
     assert len(get_json(server, "/api/library")["tiles"]) == 6
+
+
+# ----------------------------------------------------------------------------- the stage screens' data
+def test_session_json_carries_what_the_capture_and_axis_screens_draw(server):
+    j = get_json(server, "/api/session")
+    assert j["figure_box"] == [20, 30, 200, 140] and j["figure_area"] > 0
+    assert j["has_fold"] is False and j["axis_curve"][0][1] == 120.0        # no fold: a straight axis
+    assert len(j["palette"]) == 4 and all(p["from"].startswith("#") and len(p["to"]) == 7 for p in j["palette"])
+
+
+def test_axis_curve_peaks_at_the_axis(server):
+    j = get_json(server, "/api/axis/curve")
+    xs = [p[0] for p in j["points"]]
+    assert xs == sorted(xs) and j["x_min"] <= xs[0] and xs[-1] <= j["x_max"]
+    best = max(j["points"], key=lambda p: p[1])
+    assert best[0] == 120.0 and best[1] == j["score"] == 1.0                # the synthetic figure mirrors exactly
+    assert j["axis_x"] == 120.0
+
+
+def test_tree_json_is_the_merge_tree(server):
+    j = get_json(server, "/api/tree")
+    assert j["n_leaves"] == 5 and [m[3] for m in j["merges"]] == [6, 7, 8, 9]
+
+
+def test_figure_and_ink_overlays(server):
+    x0, y0, _x1, _y1, _ = RECTS[1]
+    for path, on_ink, on_paper in (("/api/figure.png", False, True), ("/api/ink.png", True, False)):
+        status, ctype, data = get(server, path)
+        assert status == 200 and ctype == "image/png"
+        rgba = decode_png(data)
+        assert rgba.shape[2] == 4 and rgba.shape[:2] == Session.load(server.state.session_dir).fragments.shape
+        assert bool(rgba[y0, x0, 3] > 0) is on_ink            # the cell's border is ink, and part of the figure
+        assert bool(rgba[2, 2, 3] > 0) is on_paper            # a corner of the page: veiled, and not ink
+
+
+def test_fonts_are_served_from_static(server):
+    for name in ("syne.woff2", "recursive-sans.woff2", "recursive-mono.woff2"):
+        status, ctype, data = get(server, f"/static/{name}")
+        assert status == 200 and ctype == "font/woff2" and data[:4] == b"wOF2"
+
+
+def test_library_json_names_tags_and_provenance(server):
+    a, b = post_json(server, "/api/save", {"level": 0, "region_ids": [1, 3]})["tiles"]
+    assert a["name"] and b["name"] and a["name"] != b["name"]
+    by_id = {t["id"]: t for t in get_json(server, "/api/library")["tiles"]}
+    ta = by_id[a["id"]]
+    assert ta["pair_name"] == b["name"] and by_id[b["id"]]["pair_name"] == a["name"]
+    assert ta["source"] == {"sha256": "0" * 64, "filename": "synthetic.png", "stem": "synthetic"}
+    assert ta["in_session"] is True and ta["level_index"] == 0 and ta["region_id"] == 1
+    assert ta["bbox"] == [20, 30, 50, 60] and ta["working"] == [240, 200] and ta["tags"] == []
+    # the review screen learns the saved name too
+    regs = get_json(server, "/api/levels/0/regions")
+    assert regs["1"]["saved_name"] == a["name"] and regs["5"]["saved_name"] is None
+
+
+def test_tags_and_rename_endpoints(server):
+    a, b = (t["id"] for t in post_json(server, "/api/save", {"level": 0, "region_ids": [1, 3]})["tiles"])
+    assert post_json(server, f"/api/tiles/{a}/tags", {"add": " #wing "})["tags"] == ["wing"]
+    post_json(server, f"/api/tiles/{a}/tags", {"add": "outer"})
+    assert {t["id"]: t["tags"] for t in get_json(server, "/api/library")["tiles"]} == {a: ["outer", "wing"], b: []}
+    assert post_json(server, f"/api/tiles/{a}/tags", {"remove": "wing"})["tags"] == ["outer"]
+    post_json(server, f"/api/tiles/{a}/tags", {}, expect=400)
+    post_json(server, f"/api/tiles/{a}/tags", {"add": "x", "remove": "y"}, expect=400)
+    post_json(server, f"/api/tiles/{a}/tags", {"add": "  "}, expect=400)
+    post_json(server, "/api/tiles/nope/tags", {"add": "x"}, expect=404)
+    # rename: a label only; unique within the drawing
+    j = post_json(server, f"/api/tiles/{a}/name", {"name": "Left wing"})
+    assert j["name"] == "Left wing" and j["id"] == a
+    post_json(server, f"/api/tiles/{b}/name", {"name": "Left wing"}, expect=400)
+    post_json(server, f"/api/tiles/{b}/name", {"name": ""}, expect=400)
+    post_json(server, "/api/tiles/nope/name", {"name": "A1"}, expect=404)
+
+
+def test_sources_list_and_thumbnails(server):
+    (src,) = get_json(server, "/api/sources")["sources"]   # nothing saved yet: only the drawing under review
+    assert src["current"] is True and src["status"] == "waiting" and src["n_tiles"] == 0 and src["stem"] == "synthetic"
+    assert src["n_fragments"] == 5
+    status, ctype, data = get(server, src["thumb_url"])
+    assert status == 200 and ctype == "image/png" and decode_png(data).shape[0] == 240
+    post_json(server, "/api/save", {"level": 0, "region_ids": [1, 3]})
+    (src,) = get_json(server, "/api/sources")["sources"]
+    assert src["status"] == "in_library" and src["n_tiles"] == 2
+    get_json(server, "/api/sources/" + "f" * 64 + "/thumb.png", expect=404)
