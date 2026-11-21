@@ -5,7 +5,7 @@ import threading
 import numpy as np
 import pytest
 
-from biomorphic.library import render
+from biomorphic.library import naming, render
 from biomorphic.library.db import Library, TileExists, TileRecord, make_tile_id
 from biomorphic.session import GROUP_ID_BASE, Session
 from biomorphic.tiles import decode_png, sha256
@@ -283,7 +283,8 @@ def test_provenance_is_immutable(lib, session):
     finally:
         other.close()
     assert lib.get(rec.id).provenance["session_id"] == session.session_id
-    # no API path: nothing public on Library updates anything but pair links, and nothing names provenance
+    # no API path: nothing public on Library updates anything but pair links and the display name (`rename`),
+    # and nothing names provenance
     public = [n for n in dir(Library) if not n.startswith("_")]
     assert not [n for n in public if "update" in n.lower() or "set_" in n.lower()]
     assert [n for n in public if "provenance" in n.lower()] == ["provenance_is_immutable"]
@@ -401,3 +402,69 @@ def test_composite_components_keep_their_own_side(lib, session):
     assert by_region[5].side == "axis" and by_region[1].side == "L"
     assert session.pairing(0, apply_groups=False)["sides"][5] == "axis"
     assert 5 not in session.pairing(0)["sides"]                 # the composite hides it in the grouped partition
+
+
+# ----------------------------------------------------------------------------- display names
+def test_tiles_get_position_names_and_twins_mirror(lib, session):
+    a, b = lib.save_pair(session, 0, 1, 3)                # the upper cells, left and right of the axis
+    assert naming.mirror_name(a.name) == b.name and a.name != b.name
+    assert a.name[0] == b.name[0] and a.name[0] in naming.BANDS      # one band for the pair
+    assert int(a.name[1]) < 4 < int(b.name[1])                       # left of the axis counts down, right counts up
+    axis = lib.save_tile(session, 0, 5)
+    assert axis.name[1] == "4"                                        # on the axis
+    # a twin saved later takes the mirrored name of its partner
+    left = lib.save_tile(session, 0, 2)
+    right = lib.save_tile(session, 0, 4, pair_with=left.id)
+    assert right.name == naming.mirror_name(left.name)
+    names = [t.name for t in lib.list_tiles()]
+    assert len(set(names)) == len(names) == 5                         # unique within the source
+
+
+def test_a_taken_name_gets_a_suffix_shared_by_the_pair(lib, session):
+    a, b = lib.save_pair(session, 0, 1, 3)
+    session.add_group([1, 2])                                         # two composites that cover the same cells:
+    session.add_group([3, 4])                                         # their names may collide with the pair's
+    c, d = lib.save_pair(session, 0, GROUP_ID_BASE, GROUP_ID_BASE + 1)
+    assert naming.mirror_name(c.name) == d.name                       # still a mirrored pair of names
+    assert c.name[2:] == d.name[2:]                                   # with one shared suffix (possibly empty)
+    names = [t.name for t in lib.list_tiles()]
+    assert len(set(names)) == len(names)
+
+
+def test_rename_validates_and_keeps_names_unique(lib, session):
+    a, b = lib.save_pair(session, 0, 1, 3)
+    assert lib.rename(a.id, "  Wing L ").name == "Wing L"
+    assert lib.get(a.id).provenance == a.provenance                   # a name is not provenance
+    with pytest.raises(ValueError):
+        lib.rename(b.id, "Wing L")                                    # taken within this drawing
+    with pytest.raises(ValueError):
+        lib.rename(b.id, "")
+    with pytest.raises(ValueError):
+        lib.rename(b.id, "x" * 25)
+    with pytest.raises(KeyError):
+        lib.rename("nope", "A1")
+    assert lib.rename(a.id, "Wing L").name == "Wing L"                # renaming to its own name is fine
+
+
+def test_a_library_from_before_names_is_named_on_open(lib, lib_dir, session):
+    a, b = lib.save_pair(session, 0, 1, 3)
+    c = lib.save_tile(session, 0, 5)
+    want = {a.id: a.name, b.id: b.name, c.id: c.name}
+    lib.close()
+    con = sqlite3.connect(str(lib_dir / "library.sqlite"))           # an old library: no `name` column
+    con.execute("ALTER TABLE tiles DROP COLUMN name")
+    con.commit()
+    con.close()
+    again = Library.open(lib_dir)
+    assert {t.id: t.name for t in again.list_tiles()} == want
+    again.close()
+
+
+def test_all_tags_and_sources(lib, session):
+    assert lib.sources() == [] and lib.all_tags() == {}
+    a, b = lib.save_pair(session, 0, 1, 3)
+    lib.add_tag(a.id, "wing")
+    lib.add_tag(a.id, "outer")
+    assert lib.all_tags() == {a.id: ["outer", "wing"]}
+    (src,) = lib.sources()
+    assert src["filename"] == "synthetic.png" and src["n_tiles"] == 2 and src["sha256"] == "0" * 64
